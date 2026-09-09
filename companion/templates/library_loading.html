@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Loading Library…{% endblock %}
+
+{% block head %}
+<style>
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 28px;
+  text-align: center;
+}
+.loading-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.loading-sub {
+  font-size: .9rem;
+  color: var(--muted);
+  margin-top: -16px;
+  min-height: 1.4em;
+}
+.progress-track {
+  width: 480px;
+  max-width: 90vw;
+  height: 10px;
+  background: var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+  transition: width .4s ease;
+  width: 0%;
+}
+.progress-label {
+  font-size: .8rem;
+  color: var(--muted);
+  min-height: 1.2em;
+}
+.error-box {
+  display: none;
+  background: rgba(200,40,40,.12);
+  border: 1px solid rgba(200,40,40,.35);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  color: #e57373;
+  font-size: .88rem;
+  max-width: 480px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="loading-wrap">
+  <div class="loading-title">📚 Building your library…</div>
+  <div class="loading-sub" id="msg">Connecting to cache…</div>
+
+  <div class="progress-track">
+    <div class="progress-fill" id="bar"></div>
+  </div>
+  <div class="progress-label" id="counts"></div>
+
+  <div class="error-box" id="err-box">
+    <strong>Something went wrong:</strong><br>
+    <span id="err-msg"></span><br><br>
+    <a href="{{ url_for('library') }}" class="btn btn-ghost btn-sm">Retry →</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BAR    = document.getElementById('bar');
+const MSG    = document.getElementById('msg');
+const COUNTS = document.getElementById('counts');
+const ERRBOX = document.getElementById('err-box');
+const ERRMSG = document.getElementById('err-msg');
+
+let _timer = null;
+let _etaStart = null;
+
+function fmt(n) { return n.toLocaleString(); }
+
+async function poll() {
+  try {
+    const r = await fetch('{{ url_for("api_library_cache_status") }}', { credentials: 'include' });
+    if (!r.ok) { scheduleNext(2000); return; }
+    const d = await r.json();
+
+    if (d.status === 'done') {
+      BAR.style.width = '100%';
+      MSG.textContent = 'Done! Redirecting…';
+      COUNTS.textContent = '';
+      setTimeout(() => { window.location.href = '{{ url_for("library") }}'; }, 400);
+      return;
+    }
+
+    if (d.status === 'error') {
+      ERRBOX.style.display = 'block';
+      ERRMSG.textContent = d.msg || 'Unknown error';
+      MSG.textContent = '';
+      return;
+    }
+
+    // building
+    const pct = d.progress || 0;
+    BAR.style.width = pct + '%';
+    MSG.textContent = d.msg || 'Working…';
+
+    if (d.done && d.total) {
+      COUNTS.textContent = fmt(d.done) + ' / ' + fmt(d.total) + ' titles';
+
+      // ETA
+      if (!_etaStart && d.done > 0) _etaStart = { t: Date.now(), done: d.done };
+      if (_etaStart && d.done > _etaStart.done) {
+        const elapsed = (Date.now() - _etaStart.t) / 1000;
+        const rate    = (d.done - _etaStart.done) / elapsed;
+        const left    = Math.max(0, d.total - d.done);
+        const secs    = Math.round(left / rate);
+        if (secs > 2) {
+          COUNTS.textContent += ' — ~' + secs + 's remaining';
+        }
+      }
+    } else if (d.total) {
+      COUNTS.textContent = fmt(d.total) + ' titles total';
+    }
+
+  } catch(e) { /* network hiccup — just retry */ }
+
+  scheduleNext(900);
+}
+
+function scheduleNext(ms) {
+  clearTimeout(_timer);
+  _timer = setTimeout(poll, ms);
+}
+
+poll();
+</script>
+{% endblock %}

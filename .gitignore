@@ -1,0 +1,30 @@
+# Secrets / local env
+.env
+
+# Personal library data (yours — never publish)
+my_film_data.json
+films_seen.json
+films_to_watch.json
+
+# Runtime data & caches
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+.fuse_hidden*
+
+# Local version backups
+versions/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+*.swp

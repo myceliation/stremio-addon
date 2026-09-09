@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ lst.name }} · Stremio Library{% endblock %}
+{% block content %}
+
+<a href="{{ url_for('lists_page') }}" style="color:var(--muted);font-size:.85rem;display:inline-block;margin-bottom:20px;">← Back to Lists</a>
+
+<div class="page-header">
+  <div>
+    <h1>📋 {{ lst.name }}</h1>
+    {% if lst.description %}<div class="subtitle">{{ lst.description }}</div>{% endif %}
+  </div>
+</div>
+
+{% if items %}
+  <div class="media-grid">
+    {% for item in items %}
+    <div class="media-card" style="position:relative;">
+      <a href="{{ url_for('title_page', imdb_id=item.imdb_id) }}" style="color:inherit;">
+        {% if item.poster %}
+          <img src="{{ item.poster }}" alt="{{ item.title }}" loading="lazy">
+        {% else %}
+          <div class="no-poster">{{ item.title or item.imdb_id }}</div>
+        {% endif %}
+        <div class="card-info">
+          <div class="card-title">{{ item.title or item.imdb_id }}</div>
+          {% if item.year %}<div class="card-year">{{ item.year }}</div>{% endif %}
+        </div>
+      </a>
+      <form method="POST" action="{{ url_for('api_list_remove_item') }}"
+            style="position:absolute;top:6px;right:6px;">
+        <input type="hidden" name="list_id" value="{{ lst.id }}">
+        <input type="hidden" name="imdb_id" value="{{ item.imdb_id }}">
+        <button type="submit" class="btn btn-danger btn-sm"
+                style="padding:2px 7px;font-size:.75rem;"
+                title="Remove from list">✕</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty-state">
+    <div class="icon">📭</div>
+    <p>This list is empty. Add titles from any title detail page.</p>
+  </div>
+{% endif %}
+
+{% endblock %}

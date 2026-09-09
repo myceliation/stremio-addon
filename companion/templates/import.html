@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Import · Stremio Library{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>⬆ Import</h1>
+  <div class="subtitle">Bulk-add titles to your library</div>
+</div>
+
+<!-- Tabs -->
+<div class="import-tabs">
+  <div class="import-tab active" onclick="switchTab('paste', this)">📋 Paste Text</div>
+  <div class="import-tab" onclick="switchTab('url', this)">🔗 List URL</div>
+  <div class="import-tab" onclick="switchTab('csv', this)">📄 CSV File</div>
+</div>
+
+<!-- ── Paste Panel ─────────────────────────────────────────────────────────── -->
+<div class="import-panel active" id="tab-paste">
+  <div class="card" style="max-width:800px;">
+    <h3 style="margin-bottom:4px;">Paste anything — Wikipedia, IMDB, Letterboxd, any list</h3>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px;">
+      Open any film list in your browser, press <kbd>Ctrl+A</kbd> then <kbd>Ctrl+C</kbd>,
+      and paste below. Works with Wikipedia categories, IMDB lists, plain text lists —
+      anything containing film titles.
+    </p>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+      <div style="flex:1;min-width:180px;background:var(--bg);border-radius:8px;padding:11px 14px;font-size:.82rem;color:var(--muted);border:1px solid var(--border);">
+        <strong style="color:var(--text);">🌐 Wikipedia</strong><br>
+        Open a list or Category: page<br>
+        <kbd>Ctrl+A</kbd> &rarr; <kbd>Ctrl+C</kbd> &rarr; paste here
+      </div>
+      <div style="flex:1;min-width:180px;background:var(--bg);border-radius:8px;padding:11px 14px;font-size:.82rem;color:var(--muted);border:1px solid var(--border);">
+        <strong style="color:var(--text);">📝 Any text list</strong><br>
+        Titles like <code>The Thing (1982)</code><br>
+        or just one title per line, no year needed
+      </div>
+      <div style="flex:1;min-width:180px;background:var(--bg);border-radius:8px;padding:11px 14px;font-size:.82rem;color:var(--muted);border:1px solid var(--border);">
+        <strong style="color:var(--text);">🎬 IMDB / Letterboxd</strong><br>
+        Select all text on the page<br>
+        and paste — years are auto-detected
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('api_import_paste') }}" id="paste-form">
+      <textarea name="text" id="paste-area" class="form-control"
+        style="min-height:500px;font-family:monospace;font-size:.84rem;
+               resize:vertical;line-height:1.55;padding:16px;
+               border-radius:8px;display:block;width:100%;box-sizing:border-box;"
+        placeholder="Paste your film list here…
+
+Wikipedia Ctrl+A Ctrl+C works great — paste the whole page.
+Any of these formats are recognised:
+
+  The Godfather (1972)
+  Blade Runner (1982)
+  Alien (1979 film)
+  Annihilation (2018 American film)
+  Hereditary
+
+Titles without years work too — TMDB will find the best match."
+        required></textarea>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px;">
+        <button type="submit" class="btn btn-primary" id="paste-btn">
+          🔍 Parse &amp; Preview →
+        </button>
+        <span id="paste-count" style="color:var(--muted);font-size:.84rem;"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── URL Panel ───────────────────────────────────────────────────────────── -->
+<div class="import-panel" id="tab-url">
+  <div class="card" style="max-width:560px;">
+    <h3 style="margin-bottom:6px;">Import from URL</h3>
+    <p style="color:var(--muted);font-size:.87rem;margin-bottom:18px;">
+      Paste a public list URL. Letterboxd lists are fetched via RSS (all pages automatically).
+      Wikipedia list and Category: URLs use the MediaWiki API + TMDB lookup.
+    </p>
+    <form method="POST" action="{{ url_for('api_import_url') }}">
+      <div class="form-group">
+        <label>URL</label>
+        <input type="url" name="url" class="form-control"
+               placeholder="https://letterboxd.com/user/list/…  or  https://en.wikipedia.org/wiki/…"
+               required>
+      </div>
+      <button type="submit" class="btn btn-primary">Fetch &amp; Preview →</button>
+    </form>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);font-size:.82rem;color:var(--muted);">
+      <strong>Works with:</strong><br>
+      <code>letterboxd.com/user/list/…</code> — full list via RSS<br>
+      <code>en.wikipedia.org/wiki/List_of_…</code> — linked articles<br>
+      <code>en.wikipedia.org/wiki/Category:…</code> — category members
+    </div>
+  </div>
+</div>
+
+<!-- ── CSV Panel ──────────────────────────────────────────────────────────── -->
+<div class="import-panel" id="tab-csv">
+  <div class="card" style="max-width:560px;">
+    <h3 style="margin-bottom:6px;">CSV Import</h3>
+    <p style="color:var(--muted);font-size:.87rem;margin-bottom:18px;">
+      Supports IMDB list exports (<em>Const</em> column) and Letterboxd exports
+      (<em>Letterboxd URI</em> column with IMDB ID extraction).
+    </p>
+    <form method="POST" action="{{ url_for('api_import_csv') }}" enctype="multipart/form-data">
+      <div class="form-group">
+        <label>Import type</label>
+        <select name="import_type" class="form-control" style="width:auto;">
+          <option value="watchlist">Watchlist / Library</option>
+          <option value="ratings">Ratings</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>CSV file</label>
+        <input type="file" name="csv_file" accept=".csv" class="form-control" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Import CSV</button>
+    </form>
+  </div>
+  <div class="card" style="max-width:560px;margin-top:20px;">
+    <h4 style="margin-bottom:8px;font-size:.9rem;">How to export from IMDB</h4>
+    <ol style="color:var(--muted);font-size:.84rem;padding-left:18px;line-height:1.8;">
+      <li>Go to your IMDB list or watchlist</li>
+      <li>Click the three-dot menu → <em>Export</em></li>
+      <li>Upload the downloaded CSV here</li>
+    </ol>
+    <h4 style="margin:14px 0 8px;font-size:.9rem;">How to export from Letterboxd</h4>
+    <ol style="color:var(--muted);font-size:.84rem;padding-left:18px;line-height:1.8;">
+      <li>Go to Settings → Import &amp; Export</li>
+      <li>Click <em>Export Your Data</em></li>
+      <li>Upload <code>watchlist.csv</code> or <code>ratings.csv</code></li>
+    </ol>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchTab(name, el) {
+  document.querySelectorAll('.import-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  el.classList.add('active');
+  history.replaceState(null, '', '#' + name);
+  if (name === 'paste') setTimeout(() => document.getElementById('paste-area').focus(), 50);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const hash = location.hash.slice(1);
+  if (hash) {
+    const tab = document.querySelector(`.import-tab[onclick*="'${hash}'"]`);
+    if (tab) switchTab(hash, tab);
+  }
+
+  // Live line counter
+  const area    = document.getElementById('paste-area');
+  const counter = document.getElementById('paste-count');
+  area.addEventListener('input', () => {
+    const lines = area.value.split('\n').filter(l => l.trim().length > 1).length;
+    counter.textContent = lines ? `~${lines} non-empty lines` : '';
+  });
+});
+</script>
+
+<style>
+kbd {
+  display:inline-block;padding:1px 6px;
+  border:1px solid var(--border);border-radius:4px;
+  font-size:.8rem;font-family:monospace;
+  background:var(--bg);color:var(--text);
+}
+#paste-area::placeholder { opacity:.4; }
+</style>
+{% endblock %}

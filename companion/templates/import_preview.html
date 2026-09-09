@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% block title %}Preview Import · Stremio Library{% endblock %}
+
+{% block head %}
+<style>
+/* ── Preview-specific styles ───────────────────────────────────────── */
+.preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.preview-toolbar .filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+  align-items: center;
+}
+.preview-toolbar .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.filter-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--text);
+  font-size: .83rem;
+  cursor: pointer;
+}
+.filter-select:focus { outline: none; border-color: var(--accent); }
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 16px;
+}
+
+.preview-card {
+  position: relative;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .15s, opacity .15s;
+  user-select: none;
+}
+.preview-card.selected   { border-color: var(--accent); }
+.preview-card.deselected { opacity: .35; border-color: var(--border); }
+.preview-card.already    { border-color: var(--success); }
+.preview-card.already.deselected { opacity: .25; }
+
+.preview-card img {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  display: block;
+  background: var(--border);
+  pointer-events: none;
+}
+.preview-card .no-poster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: .72rem;
+  text-align: center;
+  padding: 8px;
+  pointer-events: none;
+}
+.preview-card .card-info {
+  padding: 8px 10px 10px;
+  pointer-events: none;
+}
+.preview-card .card-title {
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.preview-card .card-meta {
+  font-size: .73rem;
+  color: var(--muted);
+  margin-top: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.lang-badge {
+  background: rgba(124,110,247,.18);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.rating-badge {
+  background: rgba(247,201,90,.15);
+  color: var(--star);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: .7rem;
+  font-weight: 700;
+}
+.already-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(85,200,138,.85);
+  color: #000;
+  font-size: .65rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 2px 5px;
+  pointer-events: none;
+}
+.check-icon {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  background: var(--accent);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .7rem;
+  color: #fff;
+  pointer-events: none;
+  transition: opacity .1s;
+}
+.preview-card.deselected .check-icon { opacity: 0; }
+
+/* Hidden checkboxes — submitted with the form */
+.card-checkbox { display: none; }
+
+.counter {
+  font-size: .87rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.counter strong { color: var(--text); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>⬆ Preview Import</h1>
+    <div class="subtitle">
+      {{ total }} titles found
+      {% if already_count %} · <span style="color:var(--success);">{{ already_count }} already in library</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+<form method="POST" action="{{ url_for('api_import_confirm') }}" id="preview-form">
+  <input type="hidden" name="session_id" value="{{ session_id }}">
+
+  <!-- Sticky toolbar -->
+  <div class="preview-toolbar">
+    <div class="filters">
+      <!-- Language filter -->
+      <select class="filter-select" id="filter-language" onchange="applyFilters()">
+        <option value="">All languages</option>
+        {% for lang in languages %}
+          <option value="{{ lang }}">{{ lang | upper }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Type filter -->
+      <select class="filter-select" id="filter-type" onchange="applyFilters()">
+        <option value="">Movies &amp; Series</option>
+        <option value="movie">Movies only</option>
+        <option value="series">Series only</option>
+      </select>
+
+      <!-- Min TMDB rating filter -->
+      <select class="filter-select" id="filter-rating" onchange="applyFilters()">
+        <option value="">Any TMDB rating</option>
+        <option value="7">7+ / 10</option>
+        <option value="6">6+ / 10</option>
+        <option value="5">5+ / 10</option>
+      </select>
+
+      <!-- Already in library toggle -->
+      <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--muted);cursor:pointer;">
+        <input type="checkbox" id="hide-already" onchange="applyFilters()">
+        Hide already in library
+      </label>
+    </div>
+
+    <div class="actions">
+      <span class="counter" id="counter">
+        <strong id="selected-count">{{ total }}</strong> / {{ total }} selected
+      </span>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="selectAll()">Select All</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="deselectAll()">Deselect All</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="deselectNonEnglish()">Deselect Non-English</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="deselectAlready()">Deselect Already Added</button>
+      <button type="submit" class="btn btn-primary" id="import-btn">
+        Import Selected
+      </button>
+    </div>
+  </div>
+
+  <!-- Card grid -->
+  <div class="preview-grid" id="card-grid">
+    {% for item in items %}
+    <div class="preview-card selected {% if item.already_in_library %}already{% endif %}"
+         data-imdb="{{ item.imdb_id }}"
+         data-lang="{{ item.language or '' }}"
+         data-type="{{ item.type or 'movie' }}"
+         data-rating="{{ item.vote_average or 0 }}"
+         data-already="{{ '1' if item.already_in_library else '0' }}"
+         onclick="toggleCard(this)">
+
+      <input type="checkbox" name="imdb_ids" value="{{ item.imdb_id }}"
+             class="card-checkbox" checked>
+
+      {% if item.already_in_library %}
+        <span class="already-badge">✓ In Library</span>
+      {% endif %}
+      <span class="check-icon">✓</span>
+
+      {% if item.poster %}
+        <img src="{{ item.poster }}" alt="{{ item.title }}" loading="lazy">
+      {% else %}
+        <div class="no-poster">{{ item.title }}</div>
+      {% endif %}
+
+      <div class="card-info">
+        <div class="card-title">{{ item.title }}</div>
+        <div class="card-meta">
+          {% if item.year %}<span>{{ item.year }}</span>{% endif %}
+          {% if item.language %}
+            <span class="lang-badge">{{ item.language | upper }}</span>
+          {% endif %}
+          {% if item.vote_average %}
+            <span class="rating-badge">★ {{ "%.1f"|format(item.vote_average) }}</span>
+          {% endif %}
+          {% if item.type == "series" %}
+            <span style="color:var(--muted);font-size:.7rem;">TV</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Bottom submit bar -->
+  <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border);
+              display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+    <a href="{{ url_for('import_page') }}" class="btn btn-ghost">← Cancel</a>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="counter"><strong id="selected-count-bottom">{{ total }}</strong> titles will be imported</span>
+      <button type="submit" class="btn btn-primary btn-lg">Import Selected →</button>
+    </div>
+  </div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Card toggle ─────────────────────────────────────────────────────────────
+function toggleCard(card) {
+  const isSelected = card.classList.contains('selected');
+  const cb = card.querySelector('.card-checkbox');
+  if (isSelected) {
+    card.classList.remove('selected');
+    card.classList.add('deselected');
+    cb.checked = false;
+  } else {
+    card.classList.add('selected');
+    card.classList.remove('deselected');
+    cb.checked = true;
+  }
+  updateCounter();
+}
+
+function updateCounter() {
+  const visible = Array.from(document.querySelectorAll('.preview-card:not([style*="display: none"])'));
+  const selected = visible.filter(c => c.classList.contains('selected')).length;
+  const total = document.querySelectorAll('.preview-card').length;
+  const totalSelected = document.querySelectorAll('.preview-card.selected').length;
+  document.getElementById('selected-count').textContent = totalSelected;
+  document.getElementById('selected-count-bottom').textContent = totalSelected;
+}
+
+// ── Bulk actions ────────────────────────────────────────────────────────────
+function selectAll() {
+  document.querySelectorAll('.preview-card:not([style*="display: none"])').forEach(card => {
+    card.classList.add('selected');
+    card.classList.remove('deselected');
+    card.querySelector('.card-checkbox').checked = true;
+  });
+  updateCounter();
+}
+
+function deselectAll() {
+  document.querySelectorAll('.preview-card:not([style*="display: none"])').forEach(card => {
+    card.classList.remove('selected');
+    card.classList.add('deselected');
+    card.querySelector('.card-checkbox').checked = false;
+  });
+  updateCounter();
+}
+
+function deselectNonEnglish() {
+  document.querySelectorAll('.preview-card:not([style*="display: none"])').forEach(card => {
+    if (card.dataset.lang !== 'en') {
+      card.classList.remove('selected');
+      card.classList.add('deselected');
+      card.querySelector('.card-checkbox').checked = false;
+    }
+  });
+  updateCounter();
+}
+
+function deselectAlready() {
+  document.querySelectorAll('.preview-card[data-already="1"]:not([style*="display: none"])').forEach(card => {
+    card.classList.remove('selected');
+    card.classList.add('deselected');
+    card.querySelector('.card-checkbox').checked = false;
+  });
+  updateCounter();
+}
+
+// ── Filters ─────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const lang      = document.getElementById('filter-language').value.toLowerCase();
+  const type      = document.getElementById('filter-type').value;
+  const minRating = parseFloat(document.getElementById('filter-rating').value) || 0;
+  const hideAlready = document.getElementById('hide-already').checked;
+
+  document.querySelectorAll('.preview-card').forEach(card => {
+    const cardLang    = card.dataset.lang.toLowerCase();
+    const cardType    = card.dataset.type;
+    const cardRating  = parseFloat(card.dataset.rating) || 0;
+    const cardAlready = card.dataset.already === '1';
+
+    const show =
+      (!lang      || cardLang === lang) &&
+      (!type      || cardType === type) &&
+      (!minRating || cardRating >= minRating) &&
+      !(hideAlready && cardAlready);
+
+    card.style.display = show ? '' : 'none';
+  });
+  updateCounter();
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+updateCounter();
+</script>
+{% endblock %}

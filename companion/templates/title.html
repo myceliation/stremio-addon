@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.title or imdb_id }} · Stremio Library{% endblock %}
+{% block content %}
+
+<!-- Quick-remove bar — always at the top so ctrl+w pruning works without moving the mouse -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 14px;
+            background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
+  {% if in_watchlist %}
+    <form method="POST" action="{{ url_for('api_watchlist_remove') }}" style="margin:0;">
+      <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+      <button type="submit" class="btn btn-danger" style="margin:0;">♥ Remove from Library</button>
+    </form>
+  {% else %}
+    <form method="POST" action="{{ url_for('api_watchlist_add') }}" style="margin:0;">
+      <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+      <button type="submit" class="btn btn-primary" style="margin:0;">♡ Add to Library</button>
+    </form>
+  {% endif %}
+
+  {% if in_skip_list %}
+    <form method="POST" action="{{ url_for('api_skip_list_remove') }}" style="margin:0;">
+      <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+      <button type="submit" class="btn btn-ghost btn-sm" style="margin:0;color:var(--muted);">✕ Not Interested (undo)</button>
+    </form>
+  {% else %}
+    <form method="POST" action="{{ url_for('api_skip_list_add') }}" style="margin:0;">
+      <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+      <button type="submit" class="btn btn-ghost btn-sm" style="margin:0;">👎 Not Interested</button>
+    </form>
+  {% endif %}
+
+  <a href="{{ url_for('library') }}" style="color:var(--muted);font-size:.85rem;">← Back to Library</a>
+</div>
+
+<div class="title-detail">
+  <!-- Poster -->
+  <div>
+    {% if meta.poster %}
+      <img src="{{ meta.poster }}" alt="{{ meta.title }}">
+    {% else %}
+      <div style="background:var(--border);border-radius:var(--radius);aspect-ratio:2/3;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.9rem;">
+        No Poster
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Info -->
+  <div class="meta-block">
+    <h1>{{ meta.title or imdb_id }}</h1>
+    <div class="year-type">
+      {% if meta.year %}{{ meta.year }}{% endif %}
+      {% if meta.type %} · {{ meta.type | capitalize }}{% endif %}
+      {% if meta.runtime %} · {{ meta.runtime }}{% endif %}
+    </div>
+
+    {% if meta.genres %}
+    <div style="margin-bottom:14px;">
+      {% for g in meta.genres %}
+        <span class="tag" style="margin-right:4px;">{{ g }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if meta.overview %}
+      <p class="overview">{{ meta.overview }}</p>
+    {% endif %}
+
+    <!-- Action buttons -->
+    <div class="action-bar">
+
+      {% if watch_status and watch_status.completed %}
+        <span class="btn btn-ghost" style="cursor:default;">✓ Watched</span>
+        <form method="POST" action="{{ url_for('api_record_watch') }}">
+          <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+          <input type="hidden" name="completed" value="0">
+          <button type="submit" class="btn btn-ghost btn-sm">Mark Unwatched</button>
+        </form>
+      {% else %}
+        <form method="POST" action="{{ url_for('api_record_watch') }}">
+          <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+          <input type="hidden" name="completed" value="1">
+          <button type="submit" class="btn btn-success">✓ Mark Watched</button>
+        </form>
+      {% endif %}
+
+      <a href="https://www.imdb.com/title/{{ imdb_id }}/" target="_blank" class="btn btn-ghost btn-sm">
+        IMDB ↗
+      </a>
+    </div>
+
+    <!-- Rating -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3 style="margin-bottom:14px;font-size:.95rem;">Your Rating</h3>
+      <form method="POST" action="{{ url_for('api_rate') }}">
+        <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+        <div class="stars-form">
+          <div class="stars-widget">
+            {% for n in [5,4,3,2,1] %}
+            <input type="radio" name="stars" id="star{{ n }}" value="{{ n }}" class="star-input"
+              {% if rating and rating.stars == n %}checked{% endif %}>
+            <label for="star{{ n }}" class="star-label" title="{{ n }} star{{ 's' if n > 1 }}">★</label>
+            {% endfor %}
+          </div>
+          {% if rating %}
+            <span style="color:var(--muted);font-size:.82rem;">{{ rating.stars }}/5</span>
+          {% endif %}
+        </div>
+
+        <div class="form-group" style="margin-top:14px;">
+          <label for="review">Review (optional)</label>
+          <textarea name="review" id="review" class="form-control"
+            placeholder="Your thoughts…">{{ rating.review if rating else '' }}</textarea>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="submit" class="btn btn-primary btn-sm">Save Rating</button>
+          {% if rating %}
+          <form method="POST" action="{{ url_for('api_delete_rating') }}" style="display:inline;">
+            <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+            <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--danger);">Remove Rating</button>
+          </form>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+
+    <!-- Personal tags -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3 style="margin-bottom:10px;font-size:.95rem;">🏷 Personal Tags</h3>
+      {% if title_tags %}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        {% for t in title_tags %}
+          <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(124,110,247,.18);color:var(--accent);border-radius:4px;padding:3px 8px;font-size:.8rem;">
+            {{ t }}
+            <button type="button"
+              style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:.9rem;padding:0 0 0 2px;line-height:1;"
+              onclick="removeTag('{{ t }}')">✕</button>
+          </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input type="text" id="tag-input" list="tag-suggestions" placeholder="Add tag…"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:.85rem;"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();addTag();}">
+        <datalist id="tag-suggestions">
+          {% for t in all_tags %}{% if t not in title_tags %}<option value="{{ t }}">{% endif %}{% endfor %}
+        </datalist>
+        <button class="btn btn-ghost btn-sm" onclick="addTag()">Add</button>
+      </div>
+    </div>
+
+    <!-- Add to list -->
+    {% if user_lists %}
+    <div class="card">
+      <h3 style="margin-bottom:14px;font-size:.95rem;">Add to List</h3>
+      <form method="POST" action="{{ url_for('api_list_add_item') }}" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="hidden" name="imdb_id" value="{{ imdb_id }}">
+        <select name="list_id" class="form-control" style="width:auto;flex:1;">
+          {% for lst in user_lists %}
+            <option value="{{ lst.id }}">{{ lst.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-ghost">Add →</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function addTag() {
+  const inp = document.getElementById('tag-input');
+  const tag = inp.value.trim().toLowerCase();
+  if (!tag) return;
+  const fd = new FormData();
+  fd.append('imdb_id', '{{ imdb_id }}');
+  fd.append('tag', tag);
+  const r = await fetch('{{ url_for("api_tags_add") }}', { method: 'POST', body: fd, credentials: 'include' });
+  if (r.ok) { inp.value = ''; location.reload(); }
+  else alert('Failed to add tag');
+}
+
+async function removeTag(tag) {
+  const fd = new FormData();
+  fd.append('imdb_id', '{{ imdb_id }}');
+  fd.append('tag', tag);
+  const r = await fetch('{{ url_for("api_tags_remove") }}', { method: 'POST', body: fd, credentials: 'include' });
+  if (r.ok) location.reload();
+  else alert('Failed to remove tag');
+}
+</script>
+{% endblock %}

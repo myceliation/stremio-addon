@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Lists · Stremio Library{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📋 Lists</h1>
+</div>
+
+<!-- Create list form -->
+<div class="card" style="max-width:500px;margin-bottom:28px;">
+  <h3 style="margin-bottom:14px;font-size:.95rem;">New List</h3>
+  <form method="POST" action="{{ url_for('api_list_create') }}" style="display:flex;gap:8px;">
+    <input type="text" name="name" class="form-control" placeholder="List name" required>
+    <button type="submit" class="btn btn-primary">Create</button>
+  </form>
+</div>
+
+{% if lists %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">
+    {% for lst in lists %}
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:4px;">
+        <a href="{{ url_for('list_detail', list_id=lst.id) }}">{{ lst.name }}</a>
+      </div>
+      {% if lst.description %}
+        <div style="color:var(--muted);font-size:.83rem;margin-bottom:8px;">{{ lst.description }}</div>
+      {% endif %}
+      <div style="color:var(--muted);font-size:.8rem;margin-bottom:12px;">
+        {{ lst.item_count }} title{{ 's' if lst.item_count != 1 }}
+      </div>
+      <div style="display:flex;gap:6px;">
+        <a href="{{ url_for('list_detail', list_id=lst.id) }}" class="btn btn-ghost btn-sm">View →</a>
+        <form method="POST" action="{{ url_for('api_list_delete') }}">
+          <input type="hidden" name="list_id" value="{{ lst.id }}">
+          <button type="submit" class="btn btn-ghost btn-sm"
+            onclick="return confirm('Delete list {{ lst.name }}?')"
+            style="color:var(--danger);">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty-state">
+    <div class="icon">📋</div>
+    <p>No lists yet. Create one above to start curating.</p>
+  </div>
+{% endif %}
+
+{% endblock %}

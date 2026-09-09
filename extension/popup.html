@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #14181c;
+    color: #e0e0e0;
+    width: 310px;
+    padding: 16px;
+  }
+  h1 { font-size: 13px; font-weight: 700; color: #7c6ef7; margin-bottom: 12px; }
+  #found-msg { font-size: 12.5px; color: #bbb; margin-bottom: 12px; line-height: 1.6; }
+  .badge { display: inline-block; background: rgba(124,110,247,.25); color: #a89cf7;
+           border-radius: 4px; padding: 1px 7px; font-size: 12px; font-weight: 700; }
+  .note { font-size: 11px; color: #888; }
+  .warn { color: #f87171; }
+  select {
+    width: 100%; padding: 7px 10px; margin-bottom: 10px;
+    background: #1e2329; border: 1px solid #2e3540; border-radius: 6px;
+    color: #e0e0e0; font-size: 13px;
+  }
+  button {
+    width: 100%; padding: 8px; border: none; border-radius: 6px;
+    font-size: 12px; font-weight: 600; cursor: pointer; margin-bottom: 6px;
+    transition: opacity .15s;
+  }
+  #import-btn { background: #7c6ef7; color: #fff; }
+  button:hover { opacity: .82; }
+  button:disabled { opacity: .35; cursor: default; }
+  .progress { font-size: 11.5px; color: #888; margin-top: 6px; display: none; }
+  .progress span { color: #7c6ef7; }
+  .error   { color: #f87171; font-size: 11.5px; margin-top: 6px; }
+  .success { color: #55c88a; font-size: 11.5px; margin-top: 6px; }
+  #unsupported { display: none; padding: 4px 0; font-size: 13px; color: #888; line-height: 1.6; }
+</style>
+</head>
+<body>
+<h1>▶ Stremio Library Importer</h1>
+
+<div id="main">
+  <div id="found-msg">Scanning page…</div>
+  <select id="profile-select"><option value="">Loading profiles…</option></select>
+  <button id="import-btn" disabled>Import →</button>
+  <div class="progress" id="progress">
+    ⏳ <span id="progress-text">Working…</span>
+  </div>
+  <div id="msg"></div>
+</div>
+
+<div id="unsupported"><div class="status"></div></div>
+
+<script src="popup.js"></script>
+</body>
+</html>

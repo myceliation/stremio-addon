@@ -1,0 +1,675 @@
+{% extends "base.html" %}
+{% block title %}Library · Stremio Library{% endblock %}
+
+{% block head %}
+<style>
+.library-layout { display: grid; grid-template-columns: 210px 1fr; gap: 24px; align-items: start; }
+.filter-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: sticky;
+  top: 16px;
+}
+.filter-panel h3 { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 14px; }
+.filter-section { margin-bottom: 14px; }
+.filter-section label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: 5px; }
+.filter-section select { width: 100%; }
+.filter-section select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: .83rem;
+}
+.active-filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(124,110,247,.15);
+  color: var(--accent);
+  border-radius: 20px;
+  padding: 2px 8px 2px 10px;
+  font-size: .75rem;
+  margin: 2px;
+}
+.active-filter-tag a { color: var(--accent); font-size: .8rem; line-height: 1; }
+
+/* ── Search bar ── */
+.lib-search-wrap {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.lib-search-wrap input[type=text] {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px 14px;
+  color: var(--text);
+  font-size: .92rem;
+}
+.lib-search-wrap input[type=text]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+/* ── Bulk-select toolbar ── */
+#bulk-toolbar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  align-items: center;
+  gap: 12px;
+}
+#bulk-toolbar.visible { display: flex; }
+#bulk-count { font-size: .88rem; color: var(--muted); flex: 1; }
+
+/* ── Card checkbox overlay ── */
+.media-card { position: relative; }
+.card-check-wrap {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 10;
+  display: none;
+}
+.select-mode .card-check-wrap { display: block; }
+.card-check-wrap input[type=checkbox] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+.select-mode .media-card:not(.checked-card) { opacity: .65; }
+.select-mode .media-card.checked-card { outline: 2px solid var(--accent); border-radius: var(--radius); }
+
+/* Per-card hover buttons */
+.card-del-btn, .card-watched-btn {
+  position: absolute;
+  top: 6px;
+  z-index: 10;
+  border: none;
+  border-radius: 4px;
+  font-size: .7rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  display: none;
+}
+.card-del-btn { right: 6px; background: rgba(200,40,40,.85); color: #fff; }
+.card-watched-btn { right: 30px; background: rgba(46,180,46,.85); color: #fff; }
+.select-mode .card-del-btn,
+.select-mode .card-watched-btn { display: none !important; }
+
+/* Tag pills on cards */
+.card-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.card-tag-pill {
+  font-size: .62rem;
+  background: rgba(124,110,247,.18);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>📚 Library</h1>
+    <div class="subtitle">
+      {{ total }} title{{ 's' if total != 1 }}
+      {% if total != total_unfiltered %} (filtered from {{ total_unfiltered }}){% endif %}
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button id="select-toggle-btn" class="btn btn-ghost btn-sm" onclick="toggleSelectMode()">☑ Select</button>
+    <a href="{{ url_for('library', **({'search':f_search,'genre':f_genre,'decade':f_decade,'sort':f_sort,'tag':f_tag,'language':f_language,'type':f_type,'min_stars':f_min_stars,'min_rating':f_min_rating,'page_size':page_size,'surprise':'1'})) }}"
+       class="btn btn-ghost btn-sm" title="Pick a random title from the current filtered set">🎲 Surprise me</a>
+    <a href="{{ url_for('import_page') }}" class="btn btn-ghost btn-sm">⬆ Import</a>
+    <button id="sync-btn" class="btn btn-primary btn-sm" onclick="syncToStremio()">⟳ Sync to Stremio</button>
+    <button id="reclassify-btn" class="btn btn-ghost btn-sm" onclick="reclassifyCache()" title="Re-check TMDB for any items stored with wrong movie/series type">⚙ Fix Types</button>
+    <button class="btn btn-ghost btn-sm" onclick="fixGenres()" title="Clear empty-genre cache entries so the library re-fetches genres from TMDB">🏷 Fix Genres</button>
+    <button class="btn btn-ghost btn-sm" onclick="syncCache()" title="Find items in your watchlist that are missing from the library view and add them — much faster than a full rebuild">🔄 Sync Library</button>
+  </div>
+</div>
+<div id="sync-msg" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;"></div>
+
+<!-- Search bar -->
+<form method="GET" action="{{ url_for('library') }}" class="lib-search-wrap" id="search-form">
+  <input type="hidden" name="page_size"   value="{{ page_size }}">
+  <input type="hidden" name="sort"        value="{{ f_sort }}">
+  <input type="hidden" name="genre"       value="{{ f_genre }}">
+  <input type="hidden" name="decade"      value="{{ f_decade }}">
+  <input type="hidden" name="tag"         value="{{ f_tag }}">
+  <input type="hidden" name="language"    value="{{ f_language }}">
+  <input type="hidden" name="type"        value="{{ f_type }}">
+  <input type="hidden" name="min_stars"   value="{{ f_min_stars }}">
+  <input type="hidden" name="min_rating"  value="{{ f_min_rating }}">
+  <input type="text" name="search" value="{{ f_search }}" placeholder="Search titles and descriptions…" autocomplete="off">
+  <button type="submit" class="btn btn-ghost btn-sm">Search</button>
+  {% if f_search %}
+    <a href="{{ url_for('library', page_size=page_size, sort=f_sort, genre=f_genre, decade=f_decade, tag=f_tag, language=f_language, type=f_type, min_stars=f_min_stars, min_rating=f_min_rating) }}" class="btn btn-ghost btn-sm">✕ Clear</a>
+  {% endif %}
+</form>
+
+<!-- Active filter pills -->
+{% set active_filters = [] %}
+{% if f_language %}{% set _ = active_filters.append(('Language: ' + f_language|upper, 'language')) %}{% endif %}
+{% if f_type %}{% set _ = active_filters.append(('Type: ' + f_type, 'type')) %}{% endif %}
+{% if f_genre %}{% set _ = active_filters.append(('Genre: ' + f_genre, 'genre')) %}{% endif %}
+{% if f_decade %}{% set _ = active_filters.append(('Decade: ' + f_decade, 'decade')) %}{% endif %}
+{% if f_tag %}{% set _ = active_filters.append(('Tag: ' + f_tag, 'tag')) %}{% endif %}
+{% if f_min_stars %}{% set _ = active_filters.append(('Min stars: ' + f_min_stars, 'min_stars')) %}{% endif %}
+{% if f_min_rating %}{% set _ = active_filters.append(('Min TMDB: ' + f_min_rating, 'min_rating')) %}{% endif %}
+
+{% if active_filters %}
+<div style="margin-bottom:16px;">
+  {% for label, key in active_filters %}
+    {% set clear_args = {'language': f_language, 'type': f_type, 'genre': f_genre, 'decade': f_decade, 'tag': f_tag, 'min_stars': f_min_stars, 'min_rating': f_min_rating, 'page_size': page_size, 'sort': f_sort, 'search': f_search} %}
+    <span class="active-filter-tag">
+      {{ label }}
+      <a href="{{ url_for('library', **dict(clear_args.items() | list | selectattr('0', '!=', key) | list)) }}">✕</a>
+    </span>
+  {% endfor %}
+  <a href="{{ url_for('library', page_size=page_size) }}" style="font-size:.78rem;color:var(--muted);margin-left:6px;">Clear all</a>
+</div>
+{% endif %}
+
+<!-- Bulk-select toolbar -->
+<form id="bulk-delete-form" method="POST" action="{{ url_for('api_watchlist_bulk_remove') }}" onsubmit="return confirmBulkDelete()">
+  <div id="bulk-toolbar">
+    <span id="bulk-count">0 selected</span>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="selectAll()">Select all on page</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="deselectAll()">Deselect all</button>
+    <button type="submit" class="btn btn-sm" style="background:#c82828;color:#fff;">🗑 Delete selected</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="toggleSelectMode()">Cancel</button>
+  </div>
+  <div id="hidden-ids"></div>
+</form>
+
+<div class="library-layout">
+
+  <!-- Filter sidebar -->
+  <aside class="filter-panel">
+    <h3>Filters</h3>
+
+    <form method="GET" action="{{ url_for('library') }}" id="filter-form">
+      <input type="hidden" name="search"  value="{{ f_search }}">
+      <input type="hidden" name="skip"    value="0">
+
+      <div class="filter-section">
+        <label>Sort by</label>
+        <select name="sort" onchange="this.form.submit()">
+          <option value="added"     {% if f_sort == 'added'     %}selected{% endif %}>Date added</option>
+          <option value="year_desc" {% if f_sort == 'year_desc' %}selected{% endif %}>Year (newest)</option>
+          <option value="year_asc"  {% if f_sort == 'year_asc'  %}selected{% endif %}>Year (oldest)</option>
+          <option value="rating"    {% if f_sort == 'rating'    %}selected{% endif %}>TMDB rating</option>
+          <option value="title"     {% if f_sort == 'title'     %}selected{% endif %}>Title A–Z</option>
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <label>Genre</label>
+        <select name="genre" onchange="this.form.submit()">
+          <option value="">All</option>
+          {% for genre, count in genre_options %}
+            <option value="{{ genre }}" {% if f_genre == genre %}selected{% endif %}>
+              {{ genre }} ({{ count }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <label>Decade</label>
+        <select name="decade" onchange="this.form.submit()">
+          <option value="">All</option>
+          {% for decade, count in decade_options %}
+            <option value="{{ decade }}" {% if f_decade == decade %}selected{% endif %}>
+              {{ decade }} ({{ count }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <label>Language</label>
+        <select name="language" onchange="this.form.submit()">
+          <option value="">All</option>
+          {% for lang, count in lang_options %}
+            <option value="{{ lang }}" {% if f_language == lang %}selected{% endif %}>
+              {{ lang | upper }} ({{ count }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <label>Type</label>
+        <select name="type" onchange="this.form.submit()">
+          <option value="">All</option>
+          <option value="movie"  {% if f_type == 'movie'  %}selected{% endif %}>Movies</option>
+          <option value="series" {% if f_type == 'series' %}selected{% endif %}>Series</option>
+        </select>
+      </div>
+
+      {% if all_tags %}
+      <div class="filter-section">
+        <label>Tag</label>
+        <select name="tag" onchange="this.form.submit()">
+          <option value="">All</option>
+          {% for t in all_tags %}
+            <option value="{{ t }}" {% if f_tag == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <div class="filter-section">
+        <label>Min personal rating</label>
+        <select name="min_stars" onchange="this.form.submit()">
+          <option value="">Any</option>
+          {% for n in [1,2,3,4,5] %}
+            <option value="{{ n }}" {% if f_min_stars == n|string %}selected{% endif %}>
+              {{ '★' * n }}{{ '☆' * (5-n) }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <label>Min TMDB rating</label>
+        <select name="min_rating" onchange="this.form.submit()">
+          <option value="">Any</option>
+          {% for n in [5, 6, 7, 7.5, 8, 8.5, 9] %}
+            <option value="{{ n }}" {% if f_min_rating == n|string %}selected{% endif %}>
+              {{ n }}+ / 10
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <label>Per page</label>
+        <select name="page_size" onchange="this.form.submit()">
+          {% for opt in [100, 500, 2000, 10000] %}
+            <option value="{{ opt }}" {% if page_size == opt %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <a href="{{ url_for('library', page_size=page_size) }}" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:4px;">
+        Reset filters
+      </a>
+    </form>
+  </aside>
+
+  <!-- Grid -->
+  <div>
+    {% if items %}
+      <div class="media-grid" id="media-grid">
+        {% for item in items %}
+        <div class="media-card-wrap" style="position:relative;">
+          <a href="{{ url_for('title_page', imdb_id=item.imdb_id) }}"
+             class="media-card"
+             id="card-{{ item.imdb_id }}"
+             data-imdb="{{ item.imdb_id }}"
+             style="color:inherit;"
+             onclick="if(window._selectMode){event.preventDefault();toggleCard('{{ item.imdb_id }}',event.shiftKey);}">
+
+            <span class="card-check-wrap">
+              <input type="checkbox" id="chk-{{ item.imdb_id }}" tabindex="-1" style="pointer-events:none;">
+            </span>
+
+            {% if item.poster %}
+              <img src="{{ item.poster }}" alt="{{ item.title }}" loading="lazy">
+            {% else %}
+              <div class="no-poster">{{ item.title or item.imdb_id }}</div>
+            {% endif %}
+            <div class="card-info">
+              <div class="card-title">{{ item.title or item.imdb_id }}</div>
+              <div class="card-year" style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+                {% if item.year %}<span>{{ item.year }}</span>{% endif %}
+                {% if item.language and item.language != 'en' %}
+                  <span style="background:rgba(124,110,247,.15);color:var(--accent);border-radius:3px;padding:0 4px;font-size:.68rem;font-weight:700;">
+                    {{ item.language | upper }}
+                  </span>
+                {% endif %}
+                {% if item.vote_average %}
+                  <span style="color:var(--star);font-size:.72rem;">★{{ "%.1f"|format(item.vote_average) }}</span>
+                {% endif %}
+              </div>
+              {% if item.stars %}
+                <div class="card-stars">{{ '★' * item.stars }}{{ '☆' * (5 - item.stars) }}</div>
+              {% endif %}
+              {% if item._tags %}
+                <div class="card-tags">
+                  {% for t in item._tags %}
+                    <span class="card-tag-pill">{{ t }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </a>
+
+          <!-- Per-card hover buttons -->
+          <button class="card-watched-btn"
+                  title="Mark as watched (move to Blacklist)"
+                  onclick="quickWatched(event,'{{ item.imdb_id }}','{{ (item.title or item.imdb_id)|replace("'","\\'") }}')">✓</button>
+          <button class="card-del-btn"
+                  title="Remove from library"
+                  onclick="quickDelete(event,'{{ item.imdb_id }}','{{ (item.title or item.imdb_id)|replace("'","\\'") }}')">✕</button>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Pagination (preserves all filters) -->
+      <div class="pagination">
+        {% if skip > 0 %}
+          <a href="{{ url_for('library', skip=[skip - page_size, 0]|max, page_size=page_size, sort=f_sort, search=f_search, genre=f_genre, decade=f_decade, tag=f_tag, language=f_language, type=f_type, min_stars=f_min_stars, min_rating=f_min_rating) }}"
+             class="btn btn-ghost btn-sm">← Prev</a>
+        {% endif %}
+        <span style="color:var(--muted);font-size:.85rem;">
+          {{ skip + 1 }}–{{ [skip + page_size, total]|min }} of {{ total }}
+        </span>
+        {% if skip + page_size < total %}
+          <a href="{{ url_for('library', skip=skip + page_size, page_size=page_size, sort=f_sort, search=f_search, genre=f_genre, decade=f_decade, tag=f_tag, language=f_language, type=f_type, min_stars=f_min_stars, min_rating=f_min_rating) }}"
+             class="btn btn-ghost btn-sm">Next →</a>
+        {% endif %}
+      </div>
+
+    {% else %}
+      <div class="empty-state">
+        {% if f_language or f_type or f_min_stars or f_min_rating or f_search or f_genre or f_decade or f_tag %}
+          <div class="icon">🔍</div>
+          <p>No titles match your current filters.</p>
+          <a href="{{ url_for('library', page_size=page_size) }}" class="btn btn-ghost">Clear filters</a>
+        {% else %}
+          <div class="icon">📭</div>
+          <p>Your library is empty. Import from IMDB or Letterboxd to get started.</p>
+          <a href="{{ url_for('import_page') }}" class="btn btn-primary">⬆ Import</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+window._selectMode = false;
+const _selected = new Set();
+let _lastClickedIdx = null;
+
+function _allCards() {
+  return Array.from(document.querySelectorAll('.media-card[data-imdb]'));
+}
+
+function toggleSelectMode() {
+  window._selectMode = !window._selectMode;
+  const grid    = document.getElementById('media-grid');
+  const toolbar = document.getElementById('bulk-toolbar');
+  const btn     = document.getElementById('select-toggle-btn');
+  if (window._selectMode) {
+    grid    && grid.classList.add('select-mode');
+    toolbar && toolbar.classList.add('visible');
+    btn     && (btn.textContent = '✕ Cancel');
+  } else {
+    grid    && grid.classList.remove('select-mode');
+    toolbar && toolbar.classList.remove('visible');
+    btn     && (btn.textContent = '☑ Select');
+    deselectAll();
+    _lastClickedIdx = null;
+  }
+}
+
+function toggleCard(imdbId, shiftKey) {
+  const cards = _allCards();
+  const idx   = cards.findIndex(c => c.dataset.imdb === imdbId);
+  if (shiftKey && _lastClickedIdx !== null && idx !== _lastClickedIdx) {
+    const lo = Math.min(_lastClickedIdx, idx);
+    const hi = Math.max(_lastClickedIdx, idx);
+    const targetState = !_selected.has(imdbId);
+    for (let i = lo; i <= hi; i++) {
+      const id  = cards[i].dataset.imdb;
+      const chk = document.getElementById('chk-' + id);
+      if (targetState) {
+        _selected.add(id);
+        if (chk) chk.checked = true;
+        cards[i].classList.add('checked-card');
+      } else {
+        _selected.delete(id);
+        if (chk) chk.checked = false;
+        cards[i].classList.remove('checked-card');
+      }
+    }
+  } else {
+    const card = document.getElementById('card-' + imdbId);
+    const chk  = document.getElementById('chk-' + imdbId);
+    if (_selected.has(imdbId)) {
+      _selected.delete(imdbId);
+      if (chk) chk.checked = false;
+      if (card) card.classList.remove('checked-card');
+    } else {
+      _selected.add(imdbId);
+      if (chk) chk.checked = true;
+      if (card) card.classList.add('checked-card');
+    }
+  }
+  _lastClickedIdx = idx;
+  _updateCount();
+}
+
+function selectAll() {
+  _allCards().forEach(card => {
+    const id  = card.dataset.imdb;
+    const chk = document.getElementById('chk-' + id);
+    if (chk) chk.checked = true;
+    _selected.add(id);
+    card.classList.add('checked-card');
+  });
+  _updateCount();
+}
+
+function deselectAll() {
+  _selected.clear();
+  _allCards().forEach(card => {
+    const chk = document.getElementById('chk-' + card.dataset.imdb);
+    if (chk) chk.checked = false;
+    card.classList.remove('checked-card');
+  });
+  _updateCount();
+}
+
+function _updateCount() {
+  const el = document.getElementById('bulk-count');
+  if (el) el.textContent = _selected.size + ' selected';
+}
+
+function confirmBulkDelete() {
+  if (_selected.size === 0) { alert('No titles selected.'); return false; }
+  if (!confirm('Remove ' + _selected.size + ' title' + (_selected.size !== 1 ? 's' : '') + ' from your library?')) return false;
+  const container = document.getElementById('hidden-ids');
+  container.innerHTML = '';
+  _selected.forEach(id => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'imdb_ids'; inp.value = id;
+    container.appendChild(inp);
+  });
+  return true;
+}
+
+async function quickDelete(event, imdbId, title) {
+  event.stopPropagation();
+  if (!confirm('Remove \'' + title + '\' from your library?')) return;
+  const wrap = event.target.closest('.media-card-wrap');
+  const fd   = new FormData();
+  fd.append('imdb_id', imdbId);
+  try {
+    const r = await fetch('{{ url_for("api_watchlist_remove") }}', {
+      method: 'POST', body: fd, redirect: 'manual', credentials: 'include'
+    });
+    if (r.ok || r.type === 'opaqueredirect') {
+      if (wrap) wrap.remove();
+      _bumpCount(-1);
+    }
+  } catch(e) {
+    alert('Remove failed: ' + e.message);
+  }
+}
+
+async function quickWatched(event, imdbId, title) {
+  event.stopPropagation();
+  if (!confirm('Mark \'' + title + '\' as watched? It will move to your Blacklist.')) return;
+  const wrap = event.target.closest('.media-card-wrap');
+  const fd   = new FormData();
+  fd.append('imdb_id', imdbId);
+  try {
+    const r = await fetch('{{ url_for("api_watchlist_quick_watched") }}', {
+      method: 'POST', body: fd, credentials: 'include'
+    });
+    if (r.ok) {
+      if (wrap) wrap.remove();
+      _bumpCount(-1);
+    }
+  } catch(e) {
+    alert('Failed: ' + e.message);
+  }
+}
+
+function _bumpCount(delta) {
+  const countEl = document.querySelector('.subtitle');
+  if (countEl) {
+    const m = countEl.textContent.match(/(\d+)/);
+    if (m) countEl.textContent = countEl.textContent.replace(m[0], String(Math.max(0, parseInt(m[0]) + delta)));
+  }
+}
+
+async function syncToStremio() {
+  const btn = document.getElementById('sync-btn');
+  const msg = document.getElementById('sync-msg');
+  btn.disabled = true; btn.textContent = '⟳ Syncing…'; msg.style.display = 'none';
+  try {
+    const r = await fetch("{{ url_for('api_sync_to_stremio') }}", { method: 'POST', credentials: 'include' });
+    let data;
+    try { data = await r.json(); } catch(_) { data = {error: 'Server returned non-JSON (status ' + r.status + ')'}; }
+    msg.style.display = 'block';
+    if (data.error) {
+      msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;';
+      msg.className = 'alert-danger'; msg.textContent = '✗ ' + data.error;
+    } else {
+      msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;background:rgba(46,204,113,.15);color:#2ecc71;border:1px solid rgba(46,204,113,.4);';
+      let txt = '✓ Synced ' + data.synced + ' titles to your Stremio Library.';
+      if (data.skipped) txt += ' (' + data.skipped + ' skipped — no IMDB ID)';
+      txt += ' Restart Stremio if items don\'t appear immediately.';
+      msg.textContent = txt;
+    }
+  } catch(e) {
+    msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;';
+    msg.className = 'alert-danger'; msg.style.display = 'block'; msg.textContent = '✗ Request failed: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = '⟳ Sync to Stremio';
+}
+
+async function reclassifyCache() {
+  const btn = document.getElementById('reclassify-btn');
+  const msg = document.getElementById('sync-msg');
+  btn.disabled = true; btn.textContent = '⚙ Fixing…'; msg.style.display = 'none';
+  try {
+    const r = await fetch('/api/reclassify-cache', { method: 'POST', credentials: 'include' });
+    let data;
+    try { data = await r.json(); } catch(_) { data = {error: 'Server returned non-JSON (status ' + r.status + ')'}; }
+    msg.style.display = 'block';
+    if (data.error) {
+      msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;';
+      msg.className = 'alert-danger'; msg.textContent = '✗ ' + data.error;
+    } else {
+      msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;background:rgba(46,204,113,.15);color:#2ecc71;border:1px solid rgba(46,204,113,.4);';
+      msg.textContent = '✓ Type check complete: ' + data.updated + ' corrected, ' + data.skipped + ' already correct, ' + data.errors + ' errors (of ' + data.total + ' total). Reload to see updated types.';
+    }
+  } catch(e) {
+    msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;';
+    msg.className = 'alert-danger'; msg.textContent = '✗ Request failed: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = '⚙ Fix Types';
+}
+
+async function syncCache() {
+  const msg = document.getElementById('sync-msg');
+  msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;background:rgba(124,110,247,.12);color:var(--accent);border:1px solid rgba(124,110,247,.3);';
+  msg.textContent = '🔄 Syncing — finding items missing from the library view…';
+  try {
+    const r = await fetch('/api/library/cache/sync', { method: 'POST', credentials: 'include' });
+    const data = await r.json();
+    if (!data.ok) {
+      msg.textContent = '⚠ ' + (data.msg || 'Could not start sync');
+      return;
+    }
+    // Poll status until done
+    const poll = setInterval(async () => {
+      try {
+        const sr = await fetch('/api/library/cache/status', { credentials: 'include' });
+        const st = await sr.json();
+        if (st.status === 'done') {
+          clearInterval(poll);
+          msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;background:rgba(46,204,113,.15);color:#2ecc71;border:1px solid rgba(46,204,113,.4);';
+          msg.textContent = '✓ Sync complete — reloading…';
+          setTimeout(() => location.reload(), 800);
+        } else if (st.status === 'error') {
+          clearInterval(poll);
+          msg.style.background = 'rgba(231,76,60,.15)'; msg.style.color = '#e74c3c';
+          msg.textContent = '✗ Sync error: ' + st.msg;
+        } else {
+          msg.textContent = '🔄 ' + (st.msg || 'Syncing…');
+        }
+      } catch(e) { clearInterval(poll); }
+    }, 1000);
+  } catch(e) {
+    msg.style.background = 'rgba(231,76,60,.15)'; msg.style.color = '#e74c3c';
+    msg.textContent = '✗ ' + e.message;
+  }
+}
+
+async function fixGenres() {
+  const msg = document.getElementById('sync-msg');
+  msg.style.display = 'none';
+  try {
+    const r = await fetch('/api/genres/fix', { method: 'POST', credentials: 'include' });
+    const data = await r.json();
+    msg.style.display = 'block';
+    if (data.error) {
+      msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;';
+      msg.className = 'alert-danger'; msg.textContent = '✗ ' + data.error;
+    } else {
+      msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;background:rgba(46,204,113,.15);color:#2ecc71;border:1px solid rgba(46,204,113,.4);';
+      msg.textContent = '✓ ' + data.message;
+    }
+  } catch(e) {
+    msg.style.cssText = 'display:block;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:.9rem;';
+    msg.className = 'alert-danger'; msg.style.display = 'block'; msg.textContent = '✗ ' + e.message;
+  }
+}
+
+/* Show hover buttons on card */
+document.addEventListener('mouseover', e => {
+  if (window._selectMode) return;
+  const wrap = e.target.closest('.media-card-wrap');
+  if (!wrap) return;
+  wrap.querySelector('.card-del-btn')    && (wrap.querySelector('.card-del-btn').style.display    = 'block');
+  wrap.querySelector('.card-watched-btn') && (wrap.querySelector('.card-watched-btn').style.display = 'block');
+});
+document.addEventListener('mouseout', e => {
+  const wrap = e.target.closest('.media-card-wrap');
+  if (!wrap || wrap.contains(e.relatedTarget)) return;
+  wrap.querySelector('.card-del-btn')    && (wrap.querySelector('.card-del-btn').style.display    = '');
+  wrap.querySelector('.card-watched-btn') && (wrap.querySelector('.card-watched-btn').style.display = '');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,188 @@
+====================================================================
+  STREMIO ADD-ON SUITE — COMMAND REFERENCE
+  Folder: C:\Users\the boy\Documents\Stremio\
+====================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  LAUNCHING — QUICKEST WAYS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  NO CMD WINDOW (silent background, recommended):
+    Double-click:  start_servers.vbs
+    → Kills any old instances on 7000/7001, starts both servers,
+      then opens http://localhost:7001 in your browser.
+
+  WITH CMD WINDOW (you see log output):
+    Double-click:  start_servers.bat
+    → Same thing but keeps a console showing "Servers started."
+
+  STOP EVERYTHING:
+    Double-click:  stop_servers.bat
+    → Kills whatever is on ports 7000 and 7001.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  LAUNCHING — FROM CMD MANUALLY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Open a terminal and cd to the folder:
+    cd "C:\Users\the boy\Documents\Stremio"
+
+  Start add-on (port 7000) — with visible log output:
+    python run_addon.py
+
+  Start companion (port 7001) — with visible log output:
+    python run_companion.py
+
+  Start add-on silently (no window, no log):
+    pythonw run_addon.py
+
+  Start companion silently:
+    pythonw run_companion.py
+
+  NOTE: run each in its own terminal, or use the .vbs/.bat files
+        to run both at once.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  URLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Companion app (library, imports, settings):
+    http://localhost:7001
+
+  Add-on manifest (paste into Stremio "Add add-on from URL"):
+    http://localhost:7000/manifest.json
+
+  Add-on with your user ID (auto-generated on first run):
+    http://localhost:7000/<your-uuid>/manifest.json
+    (find your UUID in the companion under Settings or check
+     http://localhost:7000/manifest.json for the redirect)
+
+  Stremio local server (used for Library sync):
+    http://127.0.0.1:11470
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DIAGNOSTICS — IS EVERYTHING RUNNING?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Check what's on ports 7000 and 7001:
+    netstat -ano | findstr ":7000 :7001"
+
+  Check if Stremio local server is up:
+    netstat -ano | findstr ":11470"
+
+  Ping the add-on:
+    curl http://localhost:7000/manifest.json
+
+  Ping the companion:
+    curl http://localhost:7001/api/status
+
+  See all python processes running:
+    tasklist | findstr python
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DIAGNOSTICS — STREMIO LIBRARY SYNC
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Test if Stremio's local server is accepting requests:
+    curl -s http://127.0.0.1:11470/api/addonCollectionGet
+
+  Manually trigger library sync (Stremio must be open):
+    curl -X POST http://localhost:7001/api/sync-to-stremio
+
+  Check how many items are in your watchlist DB:
+    cd "C:\Users\the boy\Documents\Stremio"
+    sqlite3 data\stremio.db "SELECT COUNT(*) FROM watchlist;"
+
+  Inspect a few watchlist entries:
+    sqlite3 data\stremio.db "SELECT imdb_id, title, year FROM watchlist LIMIT 20;"
+
+  Check for entries missing IMDB IDs (TV shows etc.):
+    sqlite3 data\stremio.db "SELECT title, year FROM watchlist WHERE imdb_id IS NULL OR imdb_id='' LIMIT 30;"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DIAGNOSTICS — DATABASE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Open SQLite shell:
+    sqlite3 "C:\Users\the boy\Documents\Stremio\data\stremio.db"
+
+  Useful queries inside sqlite3:
+    .tables                                        -- list all tables
+    SELECT COUNT(*) FROM watchlist;                -- total items
+    SELECT COUNT(*) FROM tmdb_cache;               -- cached metadata
+    SELECT title, year, language FROM watchlist ORDER BY added_at DESC LIMIT 20;
+    SELECT title, year, imdb_id FROM watchlist WHERE imdb_id LIKE 'tmdb:%';
+    DELETE FROM watchlist WHERE title IN ('Text','Statistics','Automatic');
+    .quit
+
+  Backup the database:
+    copy "C:\Users\the boy\Documents\Stremio\data\stremio.db" ^
+         "C:\Users\the boy\Documents\Stremio\data\stremio_backup.db"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  COMMON PROBLEMS & FIXES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  "Address already in use" / port conflict:
+    → Run stop_servers.bat, wait 5 seconds, start again.
+    → Or kill manually:
+        for /f "tokens=5" %a in ('netstat -aon ^| findstr ":7000 "') do taskkill /f /pid %a
+        for /f "tokens=5" %a in ('netstat -aon ^| findstr ":7001 "') do taskkill /f /pid %a
+
+  Sync to Stremio Library button does nothing / returns error:
+    → Stremio must be open (it runs the local server on 11470)
+    → Confirm: curl http://127.0.0.1:11470/api/addonCollectionGet
+    → If that fails, open Stremio and wait ~10 seconds, try again
+
+  Add-on not showing in Stremio catalog:
+    → Stremio → Add-ons → paste: http://localhost:7000/<uuid>/manifest.json
+    → Check add-on is running: curl http://localhost:7000/manifest.json
+    → Restart add-on if needed (stop_servers.bat → start_servers.vbs)
+
+  Import got junk entries (UI text, non-films):
+    → Go to http://localhost:7001 → Library tab
+    → Select junk items and delete them
+    → Or in sqlite3:
+        DELETE FROM watchlist WHERE title IN ('Text','Standard','Appearance','Automatic','Statistics');
+
+  TV shows not found / missing from library:
+    → Re-paste the full list into Paste Text tab — TV support was
+      added and requires a re-import to take effect
+    → Shows like IT (1990) are TV miniseries on TMDB; the importer
+      now searches TV as fallback after movies
+
+  Extension import hangs / "waiting" page never redirects:
+    → Timeout is 170 seconds — give it time on large lists
+    → If it never resolves, check companion log for errors
+    → Use the companion's Paste Text tab as alternative
+
+  Missing packages / ImportError on startup:
+    cd "C:\Users\the boy\Documents\Stremio"
+    pip install -r requirements.txt
+
+  Check requirements.txt contents:
+    type "C:\Users\the boy\Documents\Stremio\requirements.txt"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FILE LOCATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Root folder:         C:\Users\the boy\Documents\Stremio\
+  Config:              config.py                (ports, API keys, DB path)
+  Database:            data\stremio.db
+  Add-on code:         addon\main.py            (FastAPI, port 7000)
+  Companion app:       companion\app.py          (Flask, port 7001)
+  Paste importer:      companion\paste_import.py
+  URL importer:        companion\url_import.py
+  Launch scripts:      start_servers.vbs  /  start_servers.bat
+  Stop script:         stop_servers.bat
+
+====================================================================

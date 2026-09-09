@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Stremio Library{% endblock %}
+
+{% block head %}
+<style>
+/* ── Breakdown charts ── */
+.breakdown-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; }
+@media (max-width: 900px) { .breakdown-grid { grid-template-columns: 1fr; } }
+.breakdown-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.breakdown-card h2 { font-size: .95rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 16px; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: .82rem; }
+.bar-label { width: 110px; flex-shrink: 0; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { flex: 1; background: var(--bg); border-radius: 3px; height: 14px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
+.bar-count { width: 42px; flex-shrink: 0; color: var(--muted); font-size: .75rem; text-align: right; }
+.no-data-note { color: var(--muted); font-size: .83rem; font-style: italic; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Dashboard</h1>
+    <div class="subtitle">Welcome back{% if current_profile %}, {{ current_profile.name }}{% endif %}</div>
+  </div>
+  <a href="{{ url_for('import_page') }}" class="btn btn-primary">⬆ Import</a>
+</div>
+
+{% if current_profile %}
+  <!-- Install banner -->
+  <div class="install-banner">
+    <span>📡 Add-on URL:</span>
+    <code id="manifest-url">{{ addon_url }}/{{ current_profile.id }}/manifest.json</code>
+    <button class="btn btn-ghost btn-sm" onclick="copyUrl()">Copy</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="number">{{ stats.watchlist }}</span>
+      <div class="label">In Library</div>
+    </div>
+    <div class="stat-card">
+      <span class="number">{{ stats.not_interested }}</span>
+      <div class="label">Not Interested</div>
+    </div>
+    <div class="stat-card">
+      <span class="number">{{ stats.watched }}</span>
+      <div class="label">Watched</div>
+    </div>
+    <div class="stat-card">
+      <span class="number">{{ stats.rated }}</span>
+      <div class="label">Rated</div>
+    </div>
+  </div>
+
+  <!-- Recent additions -->
+  {% if recent %}
+  <h2 style="margin:28px 0 16px;font-size:1.1rem;">Recently Added</h2>
+  <div class="media-grid">
+    {% for item in recent %}
+    <a href="{{ url_for('title_page', imdb_id=item.imdb_id) }}" class="media-card" style="color:inherit;">
+      {% if item.poster %}
+        <img src="{{ item.poster }}" alt="{{ item.title }}" loading="lazy">
+      {% else %}
+        <div class="no-poster">{{ item.title }}</div>
+      {% endif %}
+      <div class="card-info">
+        <div class="card-title">{{ item.title }}</div>
+        {% if item.year %}<div class="card-year">{{ item.year }}</div>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Breakdown charts -->
+  <div class="breakdown-grid">
+
+    <!-- Decade breakdown -->
+    <div class="breakdown-card">
+      <h2>📅 By Decade</h2>
+      {% if decade_data %}
+        {% set max_dec = decade_data | map(attribute=1) | max %}
+        {% for label, count in decade_data | reverse %}
+        <div class="bar-row">
+          <div class="bar-label">{{ label }}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:{{ (count / max_dec * 100) | round | int }}%"></div>
+          </div>
+          <div class="bar-count">{{ count }}</div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="no-data-note">No year data yet — metadata is still loading for your library items.</p>
+      {% endif %}
+    </div>
+
+    <!-- Genre breakdown -->
+    <div class="breakdown-card">
+      <h2>🎭 By Genre</h2>
+      {% if genre_data %}
+        {% set max_gen = genre_data | map(attribute=1) | max %}
+        {% for label, count in genre_data %}
+        <div class="bar-row">
+          <div class="bar-label">{{ label }}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:{{ (count / max_gen * 100) | round | int }}%;background:var(--star);"></div>
+          </div>
+          <div class="bar-count">{{ count }}</div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="no-data-note">Genre data not yet available. Click <strong>🏷 Fix Genres</strong> on the Library page to populate it.</p>
+      {% endif %}
+    </div>
+
+  </div>
+
+{% else %}
+  <div class="empty-state">
+    <div class="icon">👤</div>
+    <p>No profile selected. Create or switch profiles to get started.</p>
+    <a href="{{ url_for('profile_page') }}" class="btn btn-primary">Manage Profiles</a>
+  </div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyUrl() {
+  navigator.clipboard.writeText(document.getElementById('manifest-url').textContent);
+  event.target.textContent = 'Copied!';
+  setTimeout(() => event.target.textContent = 'Copy', 1500);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Profiles · Stremio Library{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>👤 Profiles</h1>
+</div>
+
+<div class="profile-grid" style="margin-bottom:32px;">
+  {% for p in profiles %}
+  <div class="profile-card {% if current_profile and current_profile.id == p.id %}current{% endif %}">
+    <div class="avatar">{{ p.name[0].upper() }}</div>
+    <div style="font-weight:600;margin-bottom:4px;">{{ p.name }}</div>
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px;">
+      Created {{ p.created_at[:10] }}
+    </div>
+    <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+      <form method="POST" action="{{ url_for('switch_profile') }}">
+        <input type="hidden" name="profile_id" value="{{ p.id }}">
+        <button type="submit" class="btn btn-primary btn-sm">
+          {% if current_profile and current_profile.id == p.id %}✓ Active{% else %}Switch{% endif %}
+        </button>
+      </form>
+      {% if not (current_profile and current_profile.id == p.id) %}
+      <form method="POST" action="{{ url_for('delete_profile_route') }}">
+        <input type="hidden" name="profile_id" value="{{ p.id }}">
+        <button type="submit" class="btn btn-ghost btn-sm"
+          onclick="return confirm('Delete profile {{ p.name }}?')"
+          style="color:var(--danger);">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+    <!-- Install URL -->
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px;">Stremio Install URL</div>
+      <code style="font-size:.7rem;word-break:break-all;color:var(--accent);">
+        {{ addon_url }}/{{ p.id }}/manifest.json
+      </code>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Create profile -->
+<div class="card" style="max-width:420px;">
+  <h3 style="margin-bottom:16px;">Create New Profile</h3>
+  <form method="POST" action="{{ url_for('create_profile_route') }}">
+    <div class="form-group">
+      <label for="pname">Profile Name</label>
+      <input type="text" name="name" id="pname" class="form-control"
+             placeholder="e.g. Main, Kids, Guest" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Create Profile</button>
+  </form>
+</div>
+
+{% endblock %}

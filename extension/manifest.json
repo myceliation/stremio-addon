@@ -1,0 +1,25 @@
+{
+  "manifest_version": 2,
+  "name": "Stremio Library Importer",
+  "version": "1.0",
+  "description": "Import movies from IMDB, Letterboxd, or Wikipedia into your local Stremio library with one click.",
+  "permissions": [
+    "activeTab",
+    "http://localhost:7001/*"
+  ],
+  "browser_action": {
+    "default_title": "Import to Stremio Library",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.imdb.com/*",
+        "*://*.letterboxd.com/*",
+        "*://*.wikipedia.org/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
