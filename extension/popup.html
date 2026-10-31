@@ -38,20 +38,21 @@
 </style>
 </head>
 <body>
-<h1>▶ Stremio Library Importer</h1>
-
-<div id="main">
-  <div id="found-msg">Scanning page…</div>
-  <select id="profile-select"><option value="">Loading profiles…</option></select>
-  <button id="import-btn" disabled>Import →</button>
-  <div class="progress" id="progress">
-    ⏳ <span id="progress-text">Working…</span>
-  </div>
-  <div id="msg"></div>
+<h1>🍄 Send to Mycelium</h1>
+<div id="setup" style="display:none">
+  <p class="note" style="margin-bottom:8px">Paste your Mycelium install link (Mycelium settings → Install → Copy link). It's stored only in this browser.</p>
+  <input id="link" placeholder="https://…workers.dev/…/manifest.json" style="width:100%;padding:7px;margin-bottom:8px;background:#1e2329;border:1px solid #2e3540;border-radius:6px;color:#e0e0e0">
+  <button id="save-link" style="background:#7c6ef7;color:#fff">Save</button>
 </div>
-
-<div id="unsupported"><div class="status"></div></div>
-
+<div id="main" style="display:none">
+  <div id="found-msg">Scanning page…</div>
+  <select id="target"></select>
+  <button id="import-btn" disabled>Find and review titles →</button>
+  <div id="msg"></div>
+  <p class="note" style="margin-top:6px"><a href="#" id="change-link" style="color:#888">Change Mycelium link</a></p>
+</div>
+<div id="unsupported"></div>
+<script src="extract.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

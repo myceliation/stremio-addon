@@ -62,6 +62,24 @@ DDL = (
     "tagged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
     "PRIMARY KEY (profile_id, imdb_id, tag));"
 
+    # Mirror of the Stremio app's own library / watch history (read locally)
+    "CREATE TABLE IF NOT EXISTS stremio_items ("
+    "id TEXT PRIMARY KEY, type TEXT, name TEXT, poster TEXT, "
+    "removed INTEGER DEFAULT 0, temp INTEGER DEFAULT 0, "
+    "ctime TEXT, mtime TEXT, last_watched TEXT, "
+    "time_watched INTEGER DEFAULT 0, time_offset INTEGER DEFAULT 0, "
+    "overall_time_watched INTEGER DEFAULT 0, times_watched INTEGER DEFAULT 0, "
+    "flagged_watched INTEGER DEFAULT 0, duration INTEGER DEFAULT 0, "
+    "video_id TEXT, has_scheduled INTEGER DEFAULT 0, "
+    "synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
+
+    "CREATE INDEX IF NOT EXISTS idx_stremio_items_last "
+    "ON stremio_items(last_watched DESC);"
+
+    "CREATE TABLE IF NOT EXISTS kv_state ("
+    "key TEXT PRIMARY KEY, value TEXT, "
+    "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
+
     "CREATE INDEX IF NOT EXISTS idx_title_tags_profile "
     "ON title_tags(profile_id);"
 

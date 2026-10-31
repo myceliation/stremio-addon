@@ -1,6 +1,6 @@
 ====================================================================
   STREMIO ADD-ON SUITE — COMMAND REFERENCE
-  Folder: C:\Users\the boy\Documents\Stremio\
+  Folder: %USERPROFILE%\Documents\Stremio\
 ====================================================================
 
 
@@ -27,7 +27,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Open a terminal and cd to the folder:
-    cd "C:\Users\the boy\Documents\Stremio"
+    cd "%USERPROFILE%\Documents\Stremio"
 
   Start add-on (port 7000) — with visible log output:
     python run_addon.py
@@ -95,7 +95,7 @@
     curl -X POST http://localhost:7001/api/sync-to-stremio
 
   Check how many items are in your watchlist DB:
-    cd "C:\Users\the boy\Documents\Stremio"
+    cd "%USERPROFILE%\Documents\Stremio"
     sqlite3 data\stremio.db "SELECT COUNT(*) FROM watchlist;"
 
   Inspect a few watchlist entries:
@@ -110,7 +110,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Open SQLite shell:
-    sqlite3 "C:\Users\the boy\Documents\Stremio\data\stremio.db"
+    sqlite3 "%USERPROFILE%\Documents\Stremio\data\stremio.db"
 
   Useful queries inside sqlite3:
     .tables                                        -- list all tables
@@ -122,8 +122,8 @@
     .quit
 
   Backup the database:
-    copy "C:\Users\the boy\Documents\Stremio\data\stremio.db" ^
-         "C:\Users\the boy\Documents\Stremio\data\stremio_backup.db"
+    copy "%USERPROFILE%\Documents\Stremio\data\stremio.db" ^
+         "%USERPROFILE%\Documents\Stremio\data\stremio_backup.db"
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -164,18 +164,18 @@
     → Use the companion's Paste Text tab as alternative
 
   Missing packages / ImportError on startup:
-    cd "C:\Users\the boy\Documents\Stremio"
+    cd "%USERPROFILE%\Documents\Stremio"
     pip install -r requirements.txt
 
   Check requirements.txt contents:
-    type "C:\Users\the boy\Documents\Stremio\requirements.txt"
+    type "%USERPROFILE%\Documents\Stremio\requirements.txt"
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   FILE LOCATIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Root folder:         C:\Users\the boy\Documents\Stremio\
+  Root folder:         %USERPROFILE%\Documents\Stremio\
   Config:              config.py                (ports, API keys, DB path)
   Database:            data\stremio.db
   Add-on code:         addon\main.py            (FastAPI, port 7000)

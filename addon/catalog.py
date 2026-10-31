@@ -153,3 +153,61 @@ async def handle_actor_search(conn, query: str) -> list:
             "poster": poster,
         })
     return items
+
+
+# ── Shelves + Stremio's own history (read by the companion) ───────────────────
+
+GENRES = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama",
+          "Family", "Fantasy", "History", "Horror", "Music", "Mystery", "Romance",
+          "Sci-Fi", "Thriller", "War", "Western"]
+
+
+def _meta_item(iid, tmdb_json, fallback_type, name=None, poster=None):
+    meta = {}
+    if tmdb_json:
+        try:
+            meta = json.loads(tmdb_json)
+        except Exception:
+            meta = {}
+    return {
+        "id": iid,
+        "type": meta.get("type") or fallback_type,
+        "name": meta.get("title") or name or iid,
+        "poster": meta.get("poster") or poster or "",
+        "genres": meta.get("genres") or [],
+        "releaseInfo": str(meta.get("year") or "")[:4],
+    }
+
+
+def _page(items, media_type, genre, skip):
+    out = [i for i in items
+           if (i["type"] == media_type or (media_type == "series" and i["type"] == "tv"))
+           and (not genre or genre in i["genres"])]
+    return out[skip: skip + CATALOG_PAGE_SIZE]
+
+
+async def handle_shelf(conn, profile_id: str, shelf: str, media_type: str,
+                       skip: int = 0, genre: str = "") -> list:
+    rows = conn.execute(
+        "SELECT t.imdb_id, m.tmdb_data, s.name, s.poster FROM title_tags t "
+        "LEFT JOIN metadata_cache m ON m.imdb_id=t.imdb_id "
+        "LEFT JOIN stremio_items s ON s.id=t.imdb_id "
+        "WHERE t.profile_id=? AND t.tag=? ORDER BY t.tagged_at DESC",
+        (profile_id, shelf),
+    ).fetchall()
+    items = [_meta_item(r[0], r[1], "movie", r[2], r[3]) for r in rows]
+    return _page(items, media_type, genre, skip)
+
+
+async def handle_stremio_history(conn, profile_id: str, media_type: str,
+                                 skip: int = 0, genre: str = "") -> list:
+    rows = conn.execute(
+        "SELECT s.id, m.tmdb_data, s.name, s.poster, s.type FROM stremio_items s "
+        "LEFT JOIN metadata_cache m ON m.imdb_id=s.id "
+        "WHERE (s.flagged_watched>0 OR s.times_watched>0 OR s.time_offset>60000) "
+        "AND s.id NOT IN (SELECT imdb_id FROM blacklist WHERE profile_id=?) "
+        "ORDER BY s.last_watched DESC",
+        (profile_id,),
+    ).fetchall()
+    items = [_meta_item(r[0], r[1], r[4] or "movie", r[2], r[3]) for r in rows]
+    return _page(items, media_type, genre, skip)

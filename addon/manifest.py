@@ -3,6 +3,7 @@ Manifest builder.  Generates a per-profile manifest dict.
 """
 
 from config import ADDON_PUBLIC_URL
+from addon.catalog import GENRES
 
 
 def build_manifest(profile_id: str, profile_name: str, user_lists: list[dict]) -> dict:
@@ -27,7 +28,43 @@ def build_manifest(profile_id: str, profile_name: str, user_lists: list[dict]) -
         {
             "type": "movie",
             "id": "watch_history",
-            "name": "🕓 Watch History",
+            "name": "🕓 Watched",
+            "extra": [{"name": "skip"}, {"name": "genre", "options": GENRES}],
+        },
+        {
+            "type": "series",
+            "id": "watch_history",
+            "name": "🕓 Watched (Series)",
+            "extra": [{"name": "skip"}, {"name": "genre", "options": GENRES}],
+        },
+        {
+            "type": "movie",
+            "id": "shelf_loved",
+            "name": "❤ Loved",
+            "extra": [{"name": "skip"}, {"name": "genre", "options": GENRES}],
+        },
+        {
+            "type": "series",
+            "id": "shelf_loved",
+            "name": "❤ Loved (Series)",
+            "extra": [{"name": "skip"}, {"name": "genre", "options": GENRES}],
+        },
+        {
+            "type": "movie",
+            "id": "shelf_waiting",
+            "name": "⏳ Waiting for release",
+            "extra": [{"name": "skip"}],
+        },
+        {
+            "type": "series",
+            "id": "shelf_waiting",
+            "name": "⏳ Waiting (Series)",
+            "extra": [{"name": "skip"}],
+        },
+        {
+            "type": "movie",
+            "id": "shelf_rewatch",
+            "name": "🔁 Rewatch",
             "extra": [{"name": "skip"}],
         },
         {
@@ -64,7 +101,7 @@ def build_manifest(profile_id: str, profile_name: str, user_lists: list[dict]) -
 
     return {
         "id": f"community.stremio.custom.{profile_id}",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "name": f"My Library · {profile_name}",
         "description": (
             "Personal watchlist, ratings, watch history, and custom lists. "

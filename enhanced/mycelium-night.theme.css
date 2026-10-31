@@ -1,0 +1,19 @@
+/**
+ * @name Mycelium Night
+ * @description Deep ink background, violet and orchid accents, slightly denser poster rows.
+ * @version 0.1.0
+ * @author myceliation
+ * @updateUrl https://raw.githubusercontent.com/myceliation/stremio-addon/main/enhanced/mycelium-night.theme.css
+ */
+:root {
+  --primary-background-color: #0f0f13;
+  --secondary-background-color: #1a1a24;
+  --modal-background-color: #16161f;
+  --primary-accent-color: #7c6ef7;
+  --secondary-accent-color: #55c88a;
+  --tertiary-accent-color: #f7c95a;
+  --overlay-color: rgba(124, 110, 247, 0.07);
+  --outer-glow: 0 0 18px rgba(201, 108, 247, 0.35);
+  --border-radius: 0.6rem;
+}
+html { background: #0f0f13; }

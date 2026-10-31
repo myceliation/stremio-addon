@@ -1,0 +1,12 @@
+/**
+ * @name Compact
+ * @description Fits more rows and posters on screen: smaller interface scale, tighter nav bars. Pairs with any colour theme.
+ * @version 0.1.0
+ * @author myceliation
+ * @updateUrl https://raw.githubusercontent.com/myceliation/stremio-addon/main/enhanced/compact.theme.css
+ */
+:root {
+  --interface-scale: 0.88;
+  --horizontal-nav-bar-size: 4.5rem;
+  --vertical-nav-bar-size: 5rem;
+}

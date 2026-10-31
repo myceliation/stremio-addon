@@ -1,25 +1,9 @@
 {
   "manifest_version": 2,
-  "name": "Stremio Library Importer",
-  "version": "1.0",
-  "description": "Import movies from IMDB, Letterboxd, or Wikipedia into your local Stremio library with one click.",
-  "permissions": [
-    "activeTab",
-    "http://localhost:7001/*"
-  ],
-  "browser_action": {
-    "default_title": "Import to Stremio Library",
-    "default_popup": "popup.html"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "*://*.imdb.com/*",
-        "*://*.letterboxd.com/*",
-        "*://*.wikipedia.org/*"
-      ],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ]
+  "name": "Mycelium list importer",
+  "version": "2.0",
+  "description": "Send any Letterboxd, IMDb, TMDB or Wikipedia list (or any page that mentions films) into Mycelium for Stremio, into the list you choose.",
+  "permissions": ["activeTab", "storage", "https://*.workers.dev/*"],
+  "browser_action": { "default_title": "Send this list to Mycelium", "default_popup": "popup.html" },
+  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle" }]
 }

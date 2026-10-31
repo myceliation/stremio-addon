@@ -122,7 +122,8 @@ function extractData() {
     };
   }
 
-  return { source: "unknown", type: "unknown", data: [] };
+  // Anything else: hand over the page text; the popup spots titles and IMDb links in it
+  return { source: "page", type: "text", page_url: href, text: document.body.innerText.slice(0, 400000), data: [] };
 }
 
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {

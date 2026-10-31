@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Torrents · Stremio Suite{% endblock %}
+{% block content %}
+<div class="hist-head"><h1 class="hist-title">Torrents</h1></div>
+<p class="hist-summary">Search every indexer the add-on uses, then stream it in Stremio or hand it to qBittorrent to keep.</p>
+
+<div class="tor-layout">
+  <section class="panel" aria-labelledby="sh">
+    <h2 id="sh">Search indexers</h2>
+    <p class="note">
+      Sources: The Pirate Bay, Nyaa{% if jackett %}, and every indexer in your Jackett ({{ jackett_url }}){% else %}. Jackett isn't configured, so its indexers are skipped{% endif %}.
+      {% if upstreams %}Stremio streams also merge in {{ upstreams|join(', ') }}.{% endif %}
+    </p>
+    <form class="searchrow" id="sform">
+      <input class="form-control" id="sq" name="q" value="{{ q }}" placeholder="Title, year, or S01E02" aria-label="Search torrents">
+      <select class="form-control" id="skind" style="width:auto" aria-label="Kind">
+        <option value="any">Anything</option><option value="movie">Films</option><option value="series">Series</option>
+      </select>
+      <button class="btn btn-primary" type="submit">Search</button>
+    </form>
+    <div class="src-chips" id="chips"></div>
+    <div id="results"><p class="note">Results are sorted by quality and seed health. Low-seed 4K drops below a well-seeded 1080p.</p></div>
+  </section>
+
+  <section class="panel" aria-labelledby="qh">
+    <h2 id="qh">qBittorrent</h2>
+    <div id="qbt"><p class="note">Connecting to {{ qbt_url }}…</p></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='cards.js') }}"></script>
+<script>
+const $ = id => document.getElementById(id), esc = Cards.esc;
+const QBT_URL = {{ qbt_url|tojson }};
+let lastResults = [];
+
+$("sform").addEventListener("submit", async e => {
+  e.preventDefault();
+  const q = $("sq").value.trim(); if (!q) return;
+  $("results").innerHTML = '<p class="note">Searching…</p>'; $("chips").innerHTML = "";
+  const j = await (await fetch(`/api/torrents/search?q=${encodeURIComponent(q)}&kind=${$("skind").value}`)).json();
+  $("chips").innerHTML = Object.entries(j.sources || {}).map(([k, v]) =>
+    `<span class="${typeof v === "number" ? "ok" : "err"}">${esc(k)}: ${esc(v)}</span>`).join("");
+  lastResults = j.results || [];
+  if (!lastResults.length) { $("results").innerHTML = '<p class="note">No results. Try fewer words, or add the year.</p>'; return; }
+  $("results").innerHTML = `<table class="rtable"><thead><tr><th>Release</th><th>Quality</th><th class="num">Size</th><th class="num">Seeds</th><th></th></tr></thead><tbody>`
+    + lastResults.map((r, i) => `<tr>
+      <td class="rel">${esc(r.release)}<div class="src">${esc(r.source)}${r.label ? " / " + esc(r.label) : ""}${r.also.length ? " (also " + esc(r.also.join(", ")) + ")" : ""}${r.extras ? " · " + esc(r.extras) : ""}</div></td>
+      <td class="q">${esc(r.quality === "unknown" ? "?" : r.quality)}</td>
+      <td class="num">${esc(r.size)}</td><td class="num">${r.seeds}</td>
+      <td class="acts"><button class="btn btn-sm btn-primary" data-add="${i}" type="button">To qBittorrent</button>
+        <button class="btn btn-sm btn-ghost" data-copy="${i}" type="button" title="Copy magnet link">Copy</button></td></tr>`).join("")
+    + "</tbody></table>";
+});
+$("results").addEventListener("click", async e => {
+  const a = e.target.closest("[data-add]"), c = e.target.closest("[data-copy]");
+  if (c) { await navigator.clipboard.writeText(lastResults[c.dataset.copy].magnet); Cards.toast("Magnet copied"); }
+  if (a) {
+    const r = await fetch("/api/qbt/add", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({magnet: lastResults[a.dataset.add].magnet})});
+    const j = await r.json();
+    Cards.toast(r.ok ? "Sent to qBittorrent" : (j.error || "qBittorrent didn't accept it"));
+    if (r.ok) loadQbt();
+  }
+});
+
+const fmt = b => { if (!b) return "0 B"; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return b.toFixed(i ? 1 : 0) + " " + u[i]; };
+const eta = s => s >= 8640000 ? "∞" : s > 3600 ? Math.round(s / 3600) + "h" : s > 60 ? Math.round(s / 60) + "m" : s + "s";
+let qbtOffline = false;
+const STATE = {downloading: "Downloading", stalledDL: "Stalled", uploading: "Seeding", stalledUP: "Seeding", pausedDL: "Paused", pausedUP: "Done", stoppedDL: "Paused", stoppedUP: "Done", queuedDL: "Queued", checkingDL: "Checking", metaDL: "Getting metadata", forcedDL: "Downloading", error: "Error", missingFiles: "Missing files"};
+
+async function loadQbt() {
+  const r = await fetch("/api/qbt/info"), j = await r.json();
+  if (!r.ok) {
+    qbtOffline = true;  // stop polling so a wrong password can't trip qBittorrent's login ban
+    $("qbt").innerHTML = `<div class="offline"><p>${esc(j.error)}</p>
+      <p>To control qBittorrent from here, turn on its Web UI:</p>
+      <ol><li>In qBittorrent open Tools → Options → Web UI.</li>
+      <li>Tick “Web User Interface (Remote control)”, keep port ${esc(QBT_URL.split(":").pop())}, set a username and password.</li>
+      <li>Put the same username and password in this project's <code>.env</code> as QBT_USERNAME / QBT_PASSWORD, then restart the servers.</li></ol></div>`;
+    return;
+  }
+  const t = j.torrents || [], tr = j.transfer || {};
+  $("qbt").innerHTML = `<p class="note">qBittorrent ${esc(j.version)}. Down ${fmt(tr.dl_info_speed)}/s, up ${fmt(tr.up_info_speed)}/s, ${t.length} torrents.</p>
+    <div class="tlist">` + t.slice(0, 60).map(x => `<div class="t" data-h="${x.hash}">
+      <div class="tn">${esc(x.name)}</div>
+      <div class="ts"><span>${STATE[x.state] || esc(x.state)}</span><span>${(x.progress * 100).toFixed(1)}%</span><span>${fmt(x.size)}</span>
+        <span>↓ ${fmt(x.dlspeed)}/s</span><span>↑ ${fmt(x.upspeed)}/s</span><span>${x.num_seeds} seeds</span>${x.progress < 1 ? `<span>ETA ${eta(x.eta)}</span>` : ""}</div>
+      <div class="prog"><i style="width:${x.progress * 100}%"></i></div>
+      <div class="tb">${/paused|stopped/.test(x.state) ? '<button class="btn btn-sm btn-ghost" data-a="resume" type="button">Resume</button>' : '<button class="btn btn-sm btn-ghost" data-a="pause" type="button">Pause</button>'}
+        <button class="btn btn-sm btn-ghost" data-a="reannounce" type="button">Reannounce</button>
+        <button class="btn btn-sm btn-ghost" data-a="delete" type="button">Remove</button></div></div>`).join("") + "</div>";
+}
+$("qbt").addEventListener("click", async e => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  const h = b.closest(".t").dataset.h, act = b.dataset.a;
+  let deleteFiles = false;
+  if (act === "delete") {
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Click again to remove (keeps files)"; return; }
+  }
+  const r = await fetch("/api/qbt/action", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({action: act, hashes: h, deleteFiles})});
+  Cards.toast(r.ok ? "Done" : "qBittorrent refused that"); loadQbt();
+});
+loadQbt();
+setInterval(() => { if (!document.hidden && !qbtOffline) loadQbt(); }, 4000);
+if ($("sq").value) $("sform").requestSubmit();
+</script>
+{% endblock %}

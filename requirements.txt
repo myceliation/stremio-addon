@@ -15,5 +15,8 @@ lxml>=5.0.0
 python-multipart>=0.0.9   # FastAPI form/file uploads
 aiofiles>=23.2.1
 
+# Reading Stremio's local storage (snappy-compressed LevelDB)
+cramjam>=2.8
+
 # Env loading
 python-dotenv>=1.0.0

@@ -25,6 +25,8 @@ from addon.catalog import (
     handle_user_list,
     handle_director_search,
     handle_actor_search,
+    handle_shelf,
+    handle_stremio_history,
 )
 from addon.stream import get_streams
 from addon.meta import get_meta
@@ -160,7 +162,29 @@ async def catalog_search(
     return JSONResponse(content={"metas": items})
 
 
-async def _resolve_catalog(conn, profile_id, catalog_id, media_type, skip, search) -> list:
+@app.get("/{profile_id}/catalog/{media_type}/{catalog_id}/{extra}.json")
+async def catalog_extra(profile_id: str, media_type: str, catalog_id: str, extra: str):
+    """Generic extras path, e.g. genre=Horror&skip=100"""
+    from urllib.parse import parse_qs
+    ex = {k: v[0] for k, v in parse_qs(extra).items()}
+    conn = _get_conn()
+    try:
+        _require_profile(conn, profile_id)
+        items = await _resolve_catalog(conn, profile_id, catalog_id, media_type,
+                                       _parse_skip(ex.get("skip", "0")), ex.get("search", ""),
+                                       ex.get("genre", ""))
+    finally:
+        conn.close()
+    return JSONResponse(content={"metas": items})
+
+
+async def _resolve_catalog(conn, profile_id, catalog_id, media_type, skip, search, genre="") -> list:
+    if catalog_id.startswith("shelf_"):
+        return await handle_shelf(conn, profile_id, catalog_id[len("shelf_"):], media_type, skip, genre)
+    if catalog_id == "watch_history":
+        has_stremio = conn.execute("SELECT 1 FROM stremio_items LIMIT 1").fetchone()
+        if has_stremio:
+            return await handle_stremio_history(conn, profile_id, media_type, skip, genre)
     if catalog_id == "watchlist":
         return await handle_watchlist(conn, profile_id, media_type, skip=skip)
     elif catalog_id == "watch_history":
@@ -186,12 +210,14 @@ async def stream(profile_id: str, media_type: str, imdb_id: str):
     try:
         _require_profile(conn, profile_id)
         # Try to get title for better torrent search accuracy
-        meta_data = Q.cache_get(conn, imdb_id)
+        # series ids arrive as tt1234567:season:episode
+        meta_data = Q.cache_get(conn, imdb_id.split(":")[0])
         title = meta_data.get("title", "") if meta_data else ""
+        year = str(meta_data.get("year") or "")[:4] if meta_data else ""
     finally:
         conn.close()
 
-    streams = await get_streams(imdb_id, media_type, title)
+    streams = await get_streams(imdb_id, media_type, title, year)
     return JSONResponse(content={"streams": streams})
 
 

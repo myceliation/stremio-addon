@@ -27,7 +27,15 @@
       </a>
       <a href="{{ url_for('history_page') }}"
          class="{% if request.endpoint == 'history_page' %}active{% endif %}">
-        🕓 History
+        🕓 Watch history
+      </a>
+      <a href="{{ url_for('shelves_page') }}"
+         class="{% if request.endpoint == 'shelves_page' %}active{% endif %}">
+        🗂 Shelves
+      </a>
+      <a href="{{ url_for('torrents_page') }}"
+         class="{% if request.endpoint == 'torrents_page' %}active{% endif %}">
+        🧲 Torrents
       </a>
       <a href="{{ url_for('import_page') }}"
          class="{% if request.endpoint == 'import_page' %}active{% endif %}">

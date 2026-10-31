@@ -45,7 +45,7 @@ ADDON_PUBLIC_URL: str = os.getenv("ADDON_PUBLIC_URL", f"http://{_local_ip()}:{AD
 # ── Database ──────────────────────────────────────────────────────────────────
 import pathlib
 _ROOT = pathlib.Path(__file__).parent
-DB_PATH: str = str(_ROOT / "data" / "stremio.db")
+DB_PATH: str = os.getenv("DB_PATH", str(_ROOT / "data" / "stremio.db"))
 
 # ── Stremio local server ─────────────────────────────────────────────────────
 # Stremio runs a local HTTP server (streaming only — port 11470).
@@ -57,6 +57,30 @@ STREMIO_SERVER_URL: str = os.getenv("STREMIO_SERVER_URL", "http://127.0.0.1:1147
 # If auto-detect fails: open Stremio → F12 → Application → Local Storage →
 #   http://app.strem.io → copy the value of "authKey" → paste below.
 STREMIO_AUTH_KEY: str = os.getenv("STREMIO_AUTH_KEY", "")
+
+# ── Stream sources ────────────────────────────────────────────────────────────
+# Jackett (or Prowlarr's Jackett-compatible API). Leave blank to reuse the
+# settings from qBittorrent's Jackett search plugin (nova3/engines/jackett.json).
+JACKETT_URL: str = os.getenv("JACKETT_URL", "")
+JACKETT_API_KEY: str = os.getenv("JACKETT_API_KEY", "")
+
+# Other Stremio stream add-ons to merge in, comma-separated base URLs
+# (anything before /manifest.json), e.g. https://torrentio.strem.fun
+UPSTREAM_STREAM_ADDONS: str = os.getenv("UPSTREAM_STREAM_ADDONS", "")
+
+# Trackers attached to every stream for peer discovery. Pulled from this URL
+# (cached a day), topped up from your qBittorrent tracker list, capped.
+TRACKERS_URL: str = os.getenv(
+    "TRACKERS_URL", "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt")
+MAX_STREAM_TRACKERS: int = int(os.getenv("MAX_STREAM_TRACKERS", "40"))
+
+MAX_STREAMS: int = int(os.getenv("MAX_STREAMS", "40"))
+MIN_STREAM_SEEDS: int = int(os.getenv("MIN_STREAM_SEEDS", "1"))
+STREAM_SOURCE_TIMEOUT: float = float(os.getenv("STREAM_SOURCE_TIMEOUT", "9"))
+
+# ── Stremio local storage (watch history) ─────────────────────────────────────
+# Auto-detected; set only if your Stremio install lives somewhere unusual.
+STREMIO_LOCALSTORAGE_DIR: str = os.getenv("STREMIO_LOCALSTORAGE_DIR", "")
 
 # ── qBittorrent ───────────────────────────────────────────────────────────────
 QBT_URL: str = os.getenv("QBT_URL", "http://localhost:8080")

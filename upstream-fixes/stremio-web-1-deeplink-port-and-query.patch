@@ -1,0 +1,34 @@
+From 4819040e1d4ae9d5a3d4ed568a1847f77ecee678 Mon Sep 17 00:00:00 2001
+From: myceliation <myceliation@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 17:56:56 +0000
+Subject: [PATCH] fix(shell): keep port and query string when opening
+ stremio:// add-on links
+
+---
+ src/App/ShellOpenHandler.ts | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/App/ShellOpenHandler.ts b/src/App/ShellOpenHandler.ts
+index fc0918a5..232a3894 100644
+--- a/src/App/ShellOpenHandler.ts
++++ b/src/App/ShellOpenHandler.ts
+@@ -44,11 +44,13 @@ const ShellOpenHandler = () => {
+         };
+         const onOpenMedia = (input: string) => {
+             try {
+-                const { protocol, hostname, pathname, searchParams } = new URL(input);
++                const { protocol, host, pathname, search, searchParams } = new URL(input);
+                 if (protocol === CONSTANTS.PROTOCOL) {
+                     setPendingTorrent(null);
+-                    if (hostname.length) {
+-                        const transportUrl = `https://${hostname}${pathname}`;
++                    if (host.length) {
++                        // `host` keeps a non-default port (stremio://example.com:8443/manifest.json)
++                        // and `search` keeps a query string; `hostname` alone dropped both.
++                        const transportUrl = `https://${host}${pathname}${search}`;
+                         navigate(`/addons?addon=${encodeURIComponent(transportUrl)}`);
+                     } else {
+                         const search = searchParams.toString();
+-- 
+2.43.0
+

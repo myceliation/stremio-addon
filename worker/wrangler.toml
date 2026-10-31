@@ -1,0 +1,19 @@
+name = "mycelium"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_als"]
+
+# Created by deploy.bat (wrangler d1 create mycelium); the id is filled in there.
+[[d1_databases]]
+binding = "DB"
+database_name = "mycelium"
+database_id = "c28b5639-53a6-48f6-a280-774a1ee77c6c"
+migrations_dir = "migrations"
+
+[observability]
+enabled = true
+
+# Once an hour Cloudflare re-reads one festival or award page on Wikipedia and adds new winners and nominees
+# (src/awardsync.js). Free plan; nothing on your PC or anywhere else needs to run.
+[triggers]
+crons = ["17 * * * *"]

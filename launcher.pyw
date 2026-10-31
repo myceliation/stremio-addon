@@ -124,6 +124,11 @@ def start_servers():
         time.sleep(1)
 
         flags      = subprocess.CREATE_NO_WINDOW
+        # cramjam reads Stremio's compressed local storage (Watch history tab)
+        if subprocess.run([_PYTHON, "-c", "import cramjam"], capture_output=True,
+                          creationflags=flags).returncode != 0:
+            subprocess.run([_PYTHON, "-m", "pip", "install", "--quiet", "cramjam"],
+                           capture_output=True, creationflags=flags)
         addon_path = os.path.join(ROOT, "run_addon.py")
         comp_path  = os.path.join(ROOT, "run_companion.py")
 
@@ -219,6 +224,14 @@ Write-Output 'OK'
     else:
         messagebox.showerror("Error", result.stderr or result.stdout or "PowerShell returned no output.")
 
+def open_mycelium():
+    """The online version (Mycelium) has its own small window."""
+    base = _PYTHON or sys.executable
+    pyw = base.replace("python.exe", "pythonw.exe")
+    if not os.path.isfile(pyw):
+        pyw = sys.executable
+    subprocess.Popen([pyw, os.path.join(ROOT, "mycelium.pyw")], cwd=ROOT)
+
 # ── Main window ────────────────────────────────────────────────────────────────
 
 class App(tk.Tk):
@@ -230,6 +243,7 @@ class App(tk.Tk):
 
         self._build_ui()
         self._poll()
+        self.after(15000, self._history_sync)
 
         if start_minimized:
             self.after(100, self.iconify)
@@ -277,6 +291,12 @@ class App(tk.Tk):
                   command=self.open_settings
                   ).pack(fill="x", padx=12, pady=(2, 4))
 
+        # ── Online version ─────────────────────────────────────────────────────
+        tk.Button(self, text="🍄  Online version (Mycelium)…",
+                  font=("Segoe UI", 10), relief="flat", bg="#ecf0f1",
+                  command=open_mycelium
+                  ).pack(fill="x", padx=12, pady=(2, 4))
+
         # ── Startup toggle ─────────────────────────────────────────────────────
         self.startup_var = tk.BooleanVar(value=get_startup())
         tk.Checkbutton(self, text="Launch automatically at Windows startup",
@@ -311,6 +331,19 @@ class App(tk.Tk):
         self.dot_addon.config(fg="#2ecc71" if addon_up else "#e74c3c")
         self.dot_comp.config( fg="#2ecc71" if comp_up  else "#e74c3c")
         self.after(3000, self._poll)
+
+    def _history_sync(self):
+        """Mycelium Watched ← what Stremio on this PC has marked finished (only when switched on in the Mycelium window)."""
+        def run():
+            try:
+                sys.path.insert(0, os.path.join(ROOT, "tools"))
+                import history_sync
+                if history_sync.enabled():
+                    history_sync.sync_once()
+            except Exception:
+                pass
+        threading.Thread(target=run, daemon=True).start()
+        self.after(30 * 60 * 1000, self._history_sync)
 
     # ── Actions ────────────────────────────────────────────────────────────────
 

@@ -613,6 +613,10 @@ def title_page(imdb_id):
     user_lists = Q.get_lists(db, pid)
     title_tags = Q.tags_get(db, pid, imdb_id)
     all_tags   = Q.tags_get_all(db, pid)
+    from companion import stremio_sync as SS
+    _sets = SS.shelf_sets(db, pid)
+    shelf_on = [k for k in _sets if imdb_id in _sets[k]]
+    stremio_row = db.execute("SELECT * FROM stremio_items WHERE id=?", (imdb_id,)).fetchone()
 
     return render_template(
         "title.html",
@@ -625,6 +629,9 @@ def title_page(imdb_id):
         user_lists=user_lists,
         title_tags=title_tags,
         all_tags=all_tags,
+        shelves=SS.SHELVES,
+        shelf_on=shelf_on,
+        stremio_row=dict(stremio_row) if stremio_row else None,
     )
 
 
@@ -652,8 +659,11 @@ def list_detail(list_id):
     return render_template("list_detail.html", lst=dict(lst), items=items)
 
 
-@app.route("/history")
-def history_page():
+@app.route("/history/companion")
+def history_page_companion():
+    # superseded by the Stremio-backed Watch history tab (routes_extra.py),
+    # which also merges these companion-recorded entries
+    return redirect(url_for("history_page"))
     profile, redir = _require_profile()
     if redir:
         return redir
@@ -1402,6 +1412,15 @@ def _get_stremio_auth_key() -> str:
     if STREMIO_AUTH_KEY:
         return STREMIO_AUTH_KEY
 
+    # Stremio 5 keeps it in its WebView2 local storage (see stremio_local.py)
+    try:
+        from companion import stremio_local
+        key = stremio_local.auth_key()
+        if key:
+            return key
+    except Exception:
+        pass
+
     import os, json, glob
     appdata    = os.environ.get("APPDATA", "")
     localdata  = os.environ.get("LOCALAPPDATA", "")
@@ -1950,3 +1969,7 @@ def api_extension_import():
     )
     t.start()
     return jsonify({"session_id": sid, "waiting_url": f"/import/waiting/{sid}"})
+
+
+# Watch History / Shelves / Torrents tabs
+from companion import routes_extra  # noqa: E402,F401

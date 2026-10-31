@@ -28,3 +28,13 @@ venv/
 Thumbs.db
 .DS_Store
 *.swp
+_push_log.txt
+PUSH_TO_GITHUB.bat
+MAKE_MODELS_RELEASE.bat
+
+# never publish
+worker/node_modules/
+worker/.wrangler/
+worker/.dev.vars
+.env
+*.lnk

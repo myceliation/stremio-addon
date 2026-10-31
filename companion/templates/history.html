@@ -1,49 +1,173 @@
 {% extends "base.html" %}
-{% block title %}Watch History · Stremio Library{% endblock %}
+{% block title %}Watch history · Stremio Suite{% endblock %}
 {% block content %}
+<div class="hist-head">
+  <h1 class="hist-title">Watch history</h1>
+  <div class="sync-box">
+    <span id="syncInfo">
+      {% if sync.ok %}Read from Stremio {{ sync.at[11:16] }} ({{ sync.count }} titles)
+      {% elif sync.error %}Couldn't read Stremio: {{ sync.error }}
+      {% else %}Not synced yet{% endif %}
+    </span>
+    <button class="btn btn-ghost btn-sm" id="syncBtn" type="button">Sync from Stremio</button>
+  </div>
+</div>
+<p class="hist-summary" id="summary"></p>
 
-<div class="page-header">
-  <h1>🕓 Watch History</h1>
-  <div class="subtitle">{{ total }} entries</div>
+<div class="spectrum" id="spectrum" role="group" aria-label="Filter by genre"></div>
+<div class="spectrum-legend" id="specLegend"></div>
+
+<div class="filters">
+  <div class="seg" id="statusSeg" role="group" aria-label="Status">
+    <button type="button" data-v="seen" aria-pressed="true">Watched &amp; started</button>
+    <button type="button" data-v="watched" aria-pressed="false">Finished</button>
+    <button type="button" data-v="progress" aria-pressed="false">In progress</button>
+    <button type="button" data-v="opened" aria-pressed="false">Only opened</button>
+    <button type="button" data-v="all" aria-pressed="false">Everything</button>
+  </div>
+  <div class="seg" id="typeSeg" role="group" aria-label="Type">
+    <button type="button" data-v="" aria-pressed="true">All</button>
+    <button type="button" data-v="movie" aria-pressed="false">Films</button>
+    <button type="button" data-v="series" aria-pressed="false">Series</button>
+  </div>
+  <select id="shelfSel" aria-label="Shelf">
+    <option value="">Any shelf</option>
+    <option value="none">Not on a shelf</option>
+    {% for s in shelves %}<option value="{{ s.key }}">{{ s.icon }} {{ s.label }}</option>{% endfor %}
+    <option value="airing">Airing (new episodes coming)</option>
+  </select>
+  <select id="decadeSel" aria-label="Decade"><option value="">Any decade</option></select>
+  <select id="langSel" aria-label="Language">
+    <option value="">Any language</option>
+    {% for l in languages %}<option value="{{ l }}">{{ l }}</option>{% endfor %}
+  </select>
+  <select id="sortSel" aria-label="Sort">
+    <option value="last">Recently watched</option>
+    <option value="times">Most rewatched</option>
+    <option value="hours">Most time spent</option>
+    <option value="vote">TMDB rating</option>
+    <option value="year">Release year</option>
+    <option value="name">Title A–Z</option>
+  </select>
+  <input type="search" id="q" placeholder="Search titles" aria-label="Search titles">
+  <label class="chk"><input type="checkbox" id="hideShelved"> Hide ignored &amp; blacklisted</label>
+  <span class="result-count" id="count"></span>
 </div>
 
-{% if items %}
-  <div class="media-grid">
-    {% for item in items %}
-    <a href="{{ url_for('title_page', imdb_id=item.imdb_id) }}" class="media-card" style="color:inherit;">
-      {% if item.poster %}
-        <img src="{{ item.poster }}" alt="{{ item.title }}" loading="lazy">
-      {% else %}
-        <div class="no-poster">{{ item.title or item.imdb_id }}</div>
-      {% endif %}
-      <div class="card-info">
-        <div class="card-title">{{ item.title or item.imdb_id }}</div>
-        {% if item.year %}<div class="card-year">{{ item.year }}</div>{% endif %}
-        <div class="card-year" style="margin-top:3px;">
-          {% if item.completed %}✓ Watched{% else %}{{ item.progress_pct }}% watched{% endif %}
-        </div>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
+<div class="pgrid" id="grid"></div>
+<div class="more-row"><button class="btn btn-ghost" id="more" type="button" hidden>Show more</button></div>
+<div class="empty-state" id="empty" hidden><p>Nothing matches these filters. Clear the genre or switch status to <em>Everything</em>.</p></div>
+{% endblock %}
 
-  <!-- Pagination -->
-  <div class="pagination">
-    {% if skip > 0 %}
-      <a href="?skip={{ [skip - page_size, 0]|max }}" class="btn btn-ghost btn-sm">← Prev</a>
-    {% endif %}
-    <span style="color:var(--muted);font-size:.85rem;">
-      {{ skip + 1 }}–{{ [skip + page_size, total]|min }} of {{ total }}
-    </span>
-    {% if skip + page_size < total %}
-      <a href="?skip={{ skip + page_size }}" class="btn btn-ghost btn-sm">Next →</a>
-    {% endif %}
-  </div>
-{% else %}
-  <div class="empty-state">
-    <div class="icon">🎬</div>
-    <p>No watch history yet. Mark titles as watched from their detail page.</p>
-  </div>
-{% endif %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='cards.js') }}"></script>
+<script>
+const ROWS = {{ rows|tojson }};
+const byId = Object.fromEntries(ROWS.map(r => [r.id, r]));
+const st = {status: "seen", type: "", shelf: "", decade: "", lang: "", sort: "last", q: "", genres: new Set(), hide: false, shown: 120};
+const $ = id => document.getElementById(id);
+const PALETTE = ["#d9a441","#8fbf9a","#e8798f","#7fb0e0","#c9a0dc","#e0a07a","#a7c957","#6cc4c0","#f2c45a","#b5a68c","#d4889c","#90a8c8"];
 
+function passStatus(r) {
+  if (st.status === "all") return true;
+  if (st.status === "seen") return r.status !== "opened";
+  return r.status === st.status;
+}
+function filtered(ignoreGenres) {
+  const q = st.q.toLowerCase();
+  return ROWS.filter(r => passStatus(r)
+    && (!st.type || r.type === st.type)
+    && (!st.shelf || (st.shelf === "none" ? !r.shelves.length : st.shelf === "airing" ? r.airing : r.shelves.includes(st.shelf)))
+    && (!st.decade || (r.year && r.year.slice(0, 3) + "0" === st.decade))
+    && (!st.lang || r.language === st.lang)
+    && (!q || r.name.toLowerCase().includes(q))
+    && (!st.hide || !(r.shelves.includes("ignore") || r.shelves.includes("blacklist")))
+    && (ignoreGenres || !st.genres.size || [...st.genres].every(g => r.genres.includes(g))));
+}
+function sorted(list) {
+  const k = st.sort, f = {
+    last: (a, b) => b.last.localeCompare(a.last), times: (a, b) => b.times - a.times || b.last.localeCompare(a.last),
+    hours: (a, b) => b.hours - a.hours, vote: (a, b) => (b.vote || 0) - (a.vote || 0),
+    year: (a, b) => (b.year || "").localeCompare(a.year || ""), name: (a, b) => a.name.localeCompare(b.name)}[k];
+  return list.slice().sort(f);
+}
+
+function renderSpectrum() {
+  const base = filtered(true);
+  const counts = {};
+  base.forEach(r => r.genres.forEach(g => counts[g] = (counts[g] || 0) + 1));
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const el = $("spectrum");
+  el.classList.toggle("has-sel", st.genres.size > 0);
+  el.innerHTML = top.map(([g, n], i) =>
+    `<button type="button" data-g="${Cards.esc(g)}" aria-pressed="${st.genres.has(g)}" style="flex-grow:${n};background:${PALETTE[i % PALETTE.length]}" title="${Cards.esc(g)}: ${n}">${n > base.length * .06 ? Cards.esc(g) : ""}</button>`).join("");
+  const missing = base.filter(r => !r.genres.length).length;
+  $("specLegend").textContent = st.genres.size
+    ? `Showing titles tagged ${[...st.genres].join(" + ")}. Click a band again to remove it.`
+    : `Click a band to filter by genre; click several to combine them.${missing ? ` ${missing} titles have no genre data yet.` : ""}`;
+}
+
+function renderSummary() {
+  const seen = ROWS.filter(r => r.status !== "opened");
+  const done = seen.filter(r => r.status === "watched").length;
+  const hrs = Math.round(seen.reduce((s, r) => s + r.hours, 0));
+  const g = {};
+  seen.forEach(r => r.genres.forEach(x => g[x] = (g[x] || 0) + 1));
+  const top = Object.entries(g).sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0].toLowerCase());
+  const loved = ROWS.filter(r => r.shelves.includes("loved")).length;
+  $("summary").innerHTML = `<strong>${done.toLocaleString()}</strong> finished and <strong>${(seen.length - done).toLocaleString()}</strong> in progress, about <strong>${hrs.toLocaleString()} hours</strong> in Stremio.`
+    + (top.length ? ` You lean toward ${top.slice(0, -1).join(", ")}${top.length > 1 ? " and " : ""}${top.at(-1)}.` : "")
+    + (loved ? ` ${loved} on your Loved shelf.` : "");
+}
+
+function render() {
+  renderSpectrum();
+  const list = sorted(filtered(false));
+  $("count").textContent = `${list.length.toLocaleString()} ${list.length === 1 ? "title" : "titles"}`;
+  $("grid").innerHTML = list.slice(0, st.shown).map(r => Cards.card(r, {showWhen: st.sort === "last"})).join("");
+  $("more").hidden = list.length <= st.shown;
+  $("empty").hidden = list.length > 0;
+}
+
+// decades
+[...new Set(ROWS.map(r => r.year && r.year.slice(0, 3) + "0").filter(Boolean))].sort().reverse()
+  .forEach(d => $("decadeSel").insertAdjacentHTML("beforeend", `<option value="${d}">${d}s</option>`));
+
+function seg(id, key) {
+  $(id).addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    $(id).querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    st[key] = b.dataset.v; st.shown = 120; render();
+  });
+}
+seg("statusSeg", "status"); seg("typeSeg", "type");
+[["shelfSel", "shelf"], ["decadeSel", "decade"], ["langSel", "lang"], ["sortSel", "sort"]].forEach(([id, k]) =>
+  $(id).addEventListener("change", e => { st[k] = e.target.value; st.shown = 120; render(); }));
+$("q").addEventListener("input", e => { st.q = e.target.value; st.shown = 120; render(); });
+$("hideShelved").addEventListener("change", e => { st.hide = e.target.checked; render(); });
+$("spectrum").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const g = b.dataset.g; st.genres.has(g) ? st.genres.delete(g) : st.genres.add(g); st.shown = 120; render();
+});
+$("more").addEventListener("click", () => { st.shown += 240; render(); });
+Cards.bind($("grid"), byId, () => renderSummary());
+
+$("syncBtn").addEventListener("click", async () => {
+  $("syncBtn").disabled = true; $("syncInfo").textContent = "Reading Stremio…";
+  const j = await (await fetch("/api/stremio/sync", {method: "POST"})).json();
+  if (j.ok) location.reload();
+  else { $("syncInfo").textContent = "Couldn't read Stremio: " + (j.error || "no library found"); $("syncBtn").disabled = false; }
+});
+
+// metadata backfill progress (genres/posters for titles not in the cache yet)
+(async function poll() {
+  const j = await (await fetch("/api/enrich/status")).json();
+  if (j.running) {
+    $("specLegend").textContent = `Fetching genres and posters: ${j.done} of ${j.total}. Reload when it finishes.`;
+    setTimeout(poll, 4000);
+  }
+})();
+
+renderSummary(); render();
+</script>
 {% endblock %}

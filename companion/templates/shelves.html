@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Shelves · Stremio Suite{% endblock %}
+{% block content %}
+<div class="hist-head"><h1 class="hist-title">Shelves</h1></div>
+<p class="hist-summary">Sort what you've seen and what you're tracking. Put titles on shelves from Watch history, Library or any title page. Loved and Waiting also show up as rows in Stremio.</p>
+
+<div class="shelf-tabs" id="tabs" role="group" aria-label="Shelves">
+  {% for s in shelves %}
+  <button type="button" data-k="{{ s.key }}" aria-pressed="{{ 'true' if s.key == active else 'false' }}" data-hint="{{ s.hint }}">
+    {{ s.icon }} {{ s.label }}<span class="n">{{ counts[s.key] }}</span></button>
+  {% endfor %}
+</div>
+<p class="shelf-hint" id="hint"></p>
+<div class="filters">
+  <input type="search" id="q" placeholder="Search this shelf" aria-label="Search this shelf">
+  <span class="result-count" id="count"></span>
+</div>
+<div class="pgrid" id="grid"></div>
+<div class="more-row"><button class="btn btn-ghost" id="more" type="button" hidden>Show more</button></div>
+<div class="empty-state" id="empty" hidden><p id="emptyMsg"></p></div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='cards.js') }}"></script>
+<script>
+const ROWS = {{ rows|tojson }};
+const byId = Object.fromEntries(ROWS.map(r => [r.id, r]));
+let active = {{ active|tojson }}, q = "", shown = 180;
+const $ = id => document.getElementById(id);
+function render() {
+  const tab = document.querySelector(`#tabs [data-k="${active}"]`) || document.querySelector("#tabs button");
+  active = tab.dataset.k;
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-pressed", b === tab));
+  $("hint").textContent = tab.dataset.hint;
+  const list = ROWS.filter(r => r.shelves.includes(active) && (!q || r.name.toLowerCase().includes(q)));
+  $("count").textContent = `${list.length.toLocaleString()} ${list.length === 1 ? "title" : "titles"}`;
+  $("grid").innerHTML = list.slice(0, shown).map(r => Cards.card(r)).join("");
+  $("more").hidden = list.length <= shown;
+  $("empty").hidden = list.length > 0;
+  $("emptyMsg").textContent = q ? "No titles on this shelf match that search."
+    : "This shelf is empty. Hover a poster in Watch history and use the shelf buttons to add titles.";
+}
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  active = b.dataset.k; shown = 180; history.replaceState(null, "", "?shelf=" + active); render();
+});
+$("q").addEventListener("input", e => { q = e.target.value.toLowerCase(); render(); });
+$("more").addEventListener("click", () => { shown += 360; render(); });
+Cards.bind($("grid"), byId, (row, shelf, on) => {
+  const n = document.querySelector(`#tabs [data-k="${shelf}"] .n`);
+  if (n) n.textContent = (+n.textContent + (on ? 1 : -1));
+});
+render();
+</script>
+{% endblock %}

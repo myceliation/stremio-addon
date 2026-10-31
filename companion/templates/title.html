@@ -32,6 +32,30 @@
   <a href="{{ url_for('library') }}" style="color:var(--muted);font-size:.85rem;">← Back to Library</a>
 </div>
 
+<div class="shelf-tabs" id="titleShelves" role="group" aria-label="Shelves" style="margin-bottom:18px">
+  {% for s in shelves %}
+  <button type="button" data-k="{{ s.key }}" aria-pressed="{{ 'true' if s.key in shelf_on else 'false' }}" title="{{ s.hint }}">{{ s.icon }} {{ s.label }}</button>
+  {% endfor %}
+  {% if stremio_row %}
+  <span style="color:var(--muted);font-size:.82rem;align-self:center;margin-left:6px;">
+    In Stremio:
+    {% if stremio_row.flagged_watched or stremio_row.times_watched %}watched{% if stremio_row.times_watched > 1 %} {{ stremio_row.times_watched }} times{% endif %}
+    {% elif stremio_row.time_offset %}started{% else %}opened{% endif %},
+    last {{ (stremio_row.last_watched or '')[:10] }}
+  </span>
+  {% endif %}
+</div>
+<script>
+document.getElementById("titleShelves").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-k]"); if (!b) return;
+  const on = b.getAttribute("aria-pressed") !== "true";
+  const r = await fetch("/api/shelf", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({imdb_id: {{ imdb_id|tojson }}, shelf: b.dataset.k, on})});
+  const j = await r.json();
+  if (r.ok) document.querySelectorAll("#titleShelves button[data-k]").forEach(x => x.setAttribute("aria-pressed", j.shelves.includes(x.dataset.k)));
+});
+</script>
+
 <div class="title-detail">
   <!-- Poster -->
   <div>
