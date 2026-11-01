@@ -213,7 +213,7 @@
         const cur = (await api("/api/settings")).settings;
         const name = q.replace(/\b\w/g, c => c.toUpperCase());
         await api("/api/settings", { ...cur, custom: [...(cur.custom || []), { name, query: q, type: sel.type }] });
-        out.innerHTML = `<p class="sub" style="margin-top:1rem">Saved “${esc(name)}” as one of your own genres. It shows up as a row after “Add to Stremio” (step 3 in the Mycelium window) or “Update Mycelium in Stremio” on the settings page.</p>`;
+        out.innerHTML = `<p class="sub" style="margin-top:1rem">Saved “${esc(name)}” as one of your own genres. It shows up in Discover under ✎ Your own genres (next to Cult, camp & exploitation) after “Add to Stremio” (step 3 in the Mycelium window) or “Update Mycelium in Stremio” on the settings page.</p>`;
       }
     });
   }

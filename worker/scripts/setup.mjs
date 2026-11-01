@@ -39,6 +39,7 @@ console.log(capture(["d1", "migrations", "apply", "mycelium", "--remote"], "y\n"
 
 // 3. bundle the in-app plugin, then deploy the code
 execSync("node scripts/build-ui.mjs", { stdio: "inherit" });
+execSync("node scripts/stamp.mjs", { stdio: "inherit" });    // after the plugin is bundled into src/
 // 3b. deploy the code
 console.log("\nDeploying…");
 const dep = run(["deploy"]);

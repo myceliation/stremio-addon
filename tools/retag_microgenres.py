@@ -19,7 +19,13 @@ def titles():
     db = os.path.join(ROOT, "data", "stremio.db")
     if not os.path.exists(db):
         return []
-    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    # read a copy (the Watchlist server may have the database open, which a read-only open can trip over)
+    import shutil, tempfile
+    tmp = tempfile.mkdtemp()
+    for ext in ("", "-wal"):
+        if os.path.exists(db + ext):
+            shutil.copyfile(db + ext, os.path.join(tmp, "stremio.db" + ext))
+    con = sqlite3.connect(os.path.join(tmp, "stremio.db"))
     kw = {}
     kp = os.path.join(ROOT, "data", "mycelium_keywords.jsonl")
     if os.path.exists(kp):
@@ -48,9 +54,22 @@ def run(base, token, say=print):
     rows = titles()
     if not rows:
         return say("No offline TMDB details on this PC; Mycelium will sort titles itself, a few at a time.")
+    # sorted here with Node and the site's own rules (worker/scripts/mgtag.mjs); the site only stores the result
+    import subprocess, tempfile
+    tmp = tempfile.mkdtemp(); src, dst = os.path.join(tmp, "in.json"), os.path.join(tmp, "out.json")
+    json.dump(rows, open(src, "w", encoding="utf-8"))
+    subprocess.run(["node", os.path.join(ROOT, "worker", "scripts", "mgtag.mjs"), src, dst], cwd=os.path.join(ROOT, "worker"),
+                   check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    mg = json.load(open(dst, encoding="utf-8"))
+    rows = [{k: v for k, v in r.items() if k != "kw"} | {"mg": mg.get(r["id"])} for r in rows]
     api = f"{base}/{token}/api/"
     for i in range(0, len(rows), 150):
-        http(api + "bulk", {"items": rows[i:i + 150]})
+        for attempt in range(4):
+            try:
+                http(api + "bulk", {"items": rows[i:i + 150]}); break
+            except Exception:
+                if attempt == 3: raise
+                import time; time.sleep(5 * (attempt + 1))
         if i % 3000 == 0:
             say(f"Sorting your saved titles into microgenres… {i:,} of {len(rows):,}")
     http(api + "mg-stats", {})

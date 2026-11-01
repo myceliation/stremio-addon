@@ -481,7 +481,7 @@ export async function microgenreStats(env, user) {
   for (const [type, c] of Object.entries(count)) {
     const ranked = Object.entries(c).sort((a, b) => b[1] - a[1]).map(([id]) => id);
     top[type] = ranked.slice(0, 40);
-    all[type] = ranked.slice(0, 500);          // the Library add-on's flat microgenre list (most common first)
+    all[type] = Object.entries(c).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).map(([id]) => id).slice(0, 2500);   // the Library add-ons' lists
   }
   user.settings.mgTop = top;
   user.settings.mgAll = all;

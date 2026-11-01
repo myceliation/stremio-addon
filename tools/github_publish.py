@@ -41,6 +41,16 @@ PATCHES = [
      "including one left by Stremio 4 or one pointing at a program that no longer exists. After upgrading, Install "
      "buttons on add-on sites silently do nothing. This also takes over handlers whose target is missing or is an "
      "older Stremio executable; handlers belonging to other programs are still left alone."),
+    ("stremio-core", "development", "fix/discover-keep-place-on-type-switch", "stremio-core-1-keep-place-on-type-switch.patch",
+     "Discover: keep the catalog and its filters when switching Movies/Series",
+     "In Discover, the type switcher (`selectable.types`) always points at the first catalog of the other type with "
+     "default extras, so flicking between Movies and Series throws away the add-on, catalog and every dropdown the user "
+     "picked (genre, year, sort, any add-on extra). This affects every app built on stremio-core, phone and TV included.\n\n"
+     "With this change, when the other type has a catalog with the same id (preferring the same add-on), the type option "
+     "points there and carries over every extra whose name and value that catalog accepts, filling in required extras as "
+     "before. If there's no matching catalog it falls back to today's behaviour. Includes a unit test "
+     "(`switching_type_keeps_catalog_and_extras`): Cinemeta movie top + genre Comedy now switches to series top + genre "
+     "Comedy instead of resetting; `cargo test catalog_with_filters` passes."),
 ]
 FOOTER = "\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"
 # (repo, title, words that would be in the title of an existing request for the same thing, body)

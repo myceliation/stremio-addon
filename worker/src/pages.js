@@ -7,10 +7,20 @@ export const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25
 export const HISTORY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#1a1a24"/><circle cx="128" cy="128" r="74" fill="none" stroke="#55c88a" stroke-width="16"/><path d="M128 84v48l32 20" stroke="#e8e8f0" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 const TILES = {
-  import: ["📥", "Import a list", "#7c6ef7"], settings: ["⚙", "Settings & lists", "#c96cf7"],
+  import: ["📥", "Import a list", "#7c6ef7"], settings: ["⚙", "Settings", "#c96cf7"], lists: ["📋", "Your lists", "#7c9ef7"],
   history: ["🕓", "Watch History", "#55c88a"], share: ["❤", "Share", "#f7c95a"], bg: ["", "", "#7c6ef7"],
 };
 export function tileSvg(name) {
+  // a microgenre family's tile ("fam-horror"): its name over two lines
+  if (name.startsWith("fam-")) {
+    const fam = name.slice(4), label = (FAMILIES.find(([f]) => f === fam) || [, fam])[1];
+    const words = label.split(" "), lines = [""];
+    for (const w of words) { if ((lines[lines.length - 1] + " " + w).trim().length > 15 && lines[lines.length - 1]) lines.push(""); lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim(); }
+    const icon = fam === "channels" ? "📺" : "🍄", color = "#55c88a";
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 586"><rect width="400" height="586" fill="#16161f"/><rect x="0" y="0" width="400" height="10" fill="${color}"/><text x="200" y="230" font-size="130" text-anchor="middle" fill="${color}" font-family="Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,sans-serif">${icon}</text>${
+      lines.slice(0, 4).map((l, i) => `<text x="200" y="${340 + i * 48}" font-size="38" font-weight="700" text-anchor="middle" fill="#e8e8f0" font-family="Segoe UI,Roboto,sans-serif">${esc(l)}</text>`).join("")
+    }<text x="200" y="550" font-size="26" text-anchor="middle" fill="#8a8ab0" font-family="Segoe UI,Roboto,sans-serif">Mycelium</text></svg>`;
+  }
   const [icon, label, color] = TILES[name] || TILES.import;
   if (name === "bg") return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0f0f13"/><stop offset="1" stop-color="#2a2150"/></linearGradient></defs><rect width="1600" height="900" fill="url(#g)"/></svg>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 586"><rect width="400" height="586" fill="#16161f"/><rect x="0" y="0" width="400" height="10" fill="${color}"/><text x="200" y="270" font-size="150" text-anchor="middle" fill="${color}" font-family="Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,sans-serif">${icon}</text><text x="200" y="400" font-size="40" font-weight="700" text-anchor="middle" fill="#e8e8f0" font-family="Segoe UI,Roboto,sans-serif">${label}</text><text x="200" y="540" font-size="26" text-anchor="middle" fill="#8a8ab0" font-family="Segoe UI,Roboto,sans-serif">Mycelium</text></svg>`;
@@ -189,7 +199,7 @@ ${insideCard()}
 
   <section class="card">
     <h2>Your own genres</h2>
-    <p class="note">Describe a genre: “slow japanese horror 1990s”, “best korean crime series”, “obscure swamp thrillers”. Each becomes a row. The same mixer also runs on anything you type into Stremio's search.</p>
+    <p class="note">Describe a genre: “slow japanese horror 1990s”, “best korean crime series”, “obscure swamp thrillers”. Each one appears in Discover under ✎ Your own genres, next to Cult, camp &amp; exploitation. The same mixer also runs on anything you type into Stremio's search.</p>
     <div id="custom" style="display:grid;gap:8px;margin-top:10px"></div>
     <button class="btn ghost" id="addCustom" type="button" style="margin-top:10px">Add a genre</button>
   </section>

@@ -666,6 +666,7 @@ for (const [war, sides] of Object.entries(SIDE_PICKS)) {
 const TODAY_ = "today";
 for (const r of FAM2_MG) {
   const items = r.items.map(([id, name, year]) => ({ id, name, year }));
+  if (r.family === "data") continue;            // lists other rows draw on (e.g. historic box-office bombs for Eras)
   if (r.family === "extra") {                    // more hand-picks for a row that already exists
     const m = MICROGENRES.find(x => x.id === r.id);
     if (m) { const have = new Set((m.items || []).map(i => i.id)); m.items = [...(m.items || []), ...items.filter(i => !have.has(i.id) && have.add(i.id))]; }
@@ -689,19 +690,19 @@ MICROGENRES.push(
 // "today" is filled in when a row is loaded (catalogs.js): rows sorted by votes or box office would otherwise be
 // topped by hyped films that aren't out yet. (A date worked out here would be 1970: Workers start with the clock at zero.)
 const TODAY = "today";
-// Eras: what each decade made into hits (TMDB's box-office figures), what it loved, and what it hated
+// Eras: what each decade loved (its box-office hits, by TMDB's figures) and what it hated (its box-office bombs, from
+// Wikipedia's list of the biggest), plus its best-known TV
 {
-  const worst = [...Object.values(WORST).flat(), ...RAZZIES.flatMap(r => r.items)];
+  const bombs = [...((FAM2_MG.find(r => r.id === "data-bombs") || {}).items || []), ...(WORST["box-office-bombs"] || [])];
   for (let d = 1920; d <= 2020; d += 10) {
     const span = { gte: `${d}-01-01`, lte: `${d + 9}-12-31` }, dec = `${d}s`;
     MICROGENRES.push(
-      { id: `era-hits-${dec}`, name: `Box-office hits of the ${dec}`, type: "movie", family: "eras",
-        params: { sort_by: "revenue.desc", "vote_count.gte": d < 1950 ? 30 : 100, "primary_release_date.gte": span.gte, "primary_release_date.lte": span.lte } },
-      { id: `era-loved-${dec}`, name: `Most-loved films of the ${dec} (today's ratings)`, type: "movie", family: "eras",
-        params: { sort_by: "vote_average.desc", "vote_count.gte": d < 1950 ? 400 : d < 1980 ? 1000 : 3000, "primary_release_date.gte": span.gte, "primary_release_date.lte": span.lte } });
-    const hated = worst.filter(([, , y]) => +String(y).slice(0, 4) >= d && +String(y).slice(0, 4) <= d + 9);
-    const seen = new Set(), items = hated.filter(([id]) => !seen.has(id) && seen.add(id)).map(([id, name, year]) => ({ id, name, year: String(year) }));
-    if (items.length >= 3) MICROGENRES.push({ id: `era-hated-${dec}`, name: `Most hated films of the ${dec} (worst-ever lists and Razzies)`, type: "movie", family: "eras", items });
+      { id: `era-hits-${dec}`, name: `${dec} box-office hits`, type: "movie", family: "eras",
+        params: { sort_by: "revenue.desc", "vote_count.gte": d < 1950 ? 30 : 100, "primary_release_date.gte": span.gte, "primary_release_date.lte": span.lte } });
+    const seen = new Set();
+    const items = bombs.filter(([id, , y]) => +String(y).slice(0, 4) >= d && +String(y).slice(0, 4) <= d + 9 && !seen.has(id) && seen.add(id))
+      .map(([id, name, year]) => ({ id, name, year: String(year) }));
+    if (items.length >= 2) MICROGENRES.push({ id: `era-bombs-${dec}`, name: `${dec} box-office bombs`, type: "movie", family: "eras", items });
     if (d >= 1940) MICROGENRES.push({ id: `era-tv-${dec}`, name: `Best-known series that began in the ${dec}`, type: "series", family: "eras",
       params: { sort_by: "vote_count.desc", "first_air_date.gte": span.gte, "first_air_date.lte": span.lte } });
   }
@@ -946,3 +947,73 @@ for (const t of ["movie", "series"]) {
 
 /** How many microgenres there are (not counting the "All" rows), for the install pages. */
 export const MG_COUNT = () => ({ all: MICROGENRES.filter(m => !m.allof).length, series: MICROGENRES.filter(m => !m.allof && m.type === "series").length });
+
+// ── short names: every dropdown entry fits in 44 characters ─────────────────
+// (families are worked out from the long names first, so shortening never moves a row)
+export const NAME_MAX = 44;
+const FAM_SHORT = { normal: "Normal genres", collections: "Collections", awards: "Awards", favourites: "Favourites", eras: "Eras",
+  world: "World cinema", china: "China, HK & Taiwan", india: "India & South Asia", prejudice: "Racism & prejudice", war: "War & history",
+  places: "Places", animation: "Animation", anime: "Anime", docs: "Documentaries", studios: "Studios", channels: "Channels",
+  horror: "Horror", scifi: "Sci-fi & fantasy", futures: "Futures", crime: "Crime & thrillers", comedy: "Comedy", romance: "Love",
+  mood: "Moods & form", cult: "Cult & camp", extreme: "Extreme", razzies: "The worst", nature: "Nature", arts: "Music & art",
+  sports: "Sports & games", growing: "Growing up & old", life: "Everything else" };
+const SHORTER = {
+  "ai-minds": "AI and thinking machines", "comic-adaptations-indie": "Comic adaptations, not superheroes",
+  "canuxploitation": "Canuxploitation: Canadian tax-shelter films", "war-israel": "Israel, Palestine and the Arab–Israeli wars",
+  "obscure-sports": "Obscure sports: curling, sumo, roller derby", "all-futures": "All: every future, by the year it's set in",
+  "futures-came": "Futures that already came", "futures-ahead": "Futures still to come", "euro-westerns": "Euro-westerns: Italian, German, Spanish",
+  "ww2-weird": "WWII sci-fi and horror: Nazi zombies and co.", "pj-racism-us-black": "Racism in America: slavery to Black lives",
+  "pj-native-americans": "Native Americans: dispossession, depiction", "pj-partition-communal": "Partition and communal violence",
+  "pj-borders": "Borders, deportation, the undocumented", "cn-sixth-generation": "The Sixth Generation and indie Chinese film",
+  "cn-docs": "Chinese documentaries: Wang Bing and co.", "cn-xianxia": "Xianxia and wuxia: immortals and swordsmen",
+  "cn-main-melody": "Main-melody blockbusters", "cn-tibet-minorities": "Tibet, Mongolia, Xinjiang: the borderlands",
+  "nc-nordic": "Nordic cinema", "nc-andes": "Andean cinema: Chile, Peru, Bolivia & co.", "nc-southeast-asia": "Southeast Asian cinema",
+  "nc-south-asia-other": "Pakistani, Sri Lankan, Nepali, Bangladeshi", "moving-paintings": "Moving paintings: gorgeous, slow, thin plot",
+  "ani-adult-strange": "Adult and arthouse animation: strange ones", "ani-prestige": "Prestige animation for adults",
+  "ani-modern-kids": "Modern Cartoon Network, Disney, Nick", "ani-world-series": "Bluey to Pororo: cartoons from everywhere",
+  "an-auteurs": "Anime auteurs: Kon, Oshii, Hosoda & co.", "in-90s": "90s Bollywood: Shah Rukh and family weepies",
+  "in-soaps": "Indian soaps, sitcoms and mythologicals", "docs-attenborough": "Attenborough & the BBC Natural History Unit", "docs-attenborough-films": "Attenborough & the BBC NHU (films)",
+  "docs-bbc-landmarks": "BBC landmarks: history, art, science, ideas", "odd-realtime": "Real time: a minute on screen is a minute",
+  "odd-objects": "Following an object from hand to hand", "odd-psa": "Educational, scare and public-info films",
+  "tv-life-rescue": "Firefighters, paramedics, first responders", "other-studios": "Everything else: every other studio",
+  "other-channels": "Everything else: smaller channels, web", "col-ifa-intl": "Oscars: Best International Feature",
+  "col-docs-oscar": "Oscars: Best Documentary", "col-animated-oscar": "Oscars: Best Animated Feature",
+  "col-bbc-21st": "BBC: the 21st century's 100 greatest films", "col-bbc-tv21": "BBC: the 21st century's greatest TV",
+  "other-collections": "Everything else: loved, on no list here", "all-india": "All: every hand-picked South Asian film",
+  "life-zizek-guides": "Žižek's Pervert's Guides: every film", "col-globe-comedy": "Golden Globes: Best Musical or Comedy",
+  "col-national-india": "India's National Film Award: Best Feature", "col-emmy-limited": "Emmys: Outstanding Limited Series",
+  "col-globe-tv-comedy": "Golden Globes: Best TV Musical or Comedy", "col-ss2022": "Sight and Sound critics' poll (2022)",
+  "col-ss2022-dir": "Sight and Sound directors' poll (2022)", "col-rs-tv": "Rolling Stone: the greatest TV shows",
+  "tv-cult-cancelled": "Cancelled too soon: cult favourites", "tv-cult-trash": "Glorious trash: soaps, schlock and camp",
+  "col-wga101": "Writers Guild: the 101 best-written series", "other-awards": "Everything else: loved, never awarded",
+  "all-awards": "All: every winner and nominee, newest first", "all-collections": "All: every film on these lists",
+  "all-favourites": "All: every favourite, tagged with whose", "other-favourites": "Everything else: films about film lovers",
+  "underground-shock": "Underground shock: Guinea Pig and co.", "all-eras": "All: the biggest hits of every decade",
+  "all-eras-series": "All: the best-known series of every decade",
+};
+for (const m of MICROGENRES) { familiesOf(m); familyOf(m); }
+{
+  const base = id => id.replace(/-series$/, "");
+  for (const m of MICROGENRES) {
+    const fam = familyOf(m);
+    let n = m.name;
+    if (m.type === "series") n = n.replace(/ \(series\)/g, "").replace(/\s{2,}/g, " ").trim();
+    n = n.replace(/^Most loved then: box-office hits of the (\d{4}s)$/, "$1 box-office hits")
+         .replace(/^Most hated then: box-office bombs of the (\d{4}s)$/, "$1 box-office bombs")
+         .replace(/^Everything else \((.+)\)$/, () => `Everything else: ${FAM_SHORT[fam] || "the rest"}`)
+         .replace(/^All: everything in (.+)$/, () => `All: ${FAM_SHORT[fam] || "everything"}`);
+    if (n.length > NAME_MAX && (SHORTER[m.id] || SHORTER[base(m.id)])) n = SHORTER[m.id] || SHORTER[base(m.id)];
+    if (n.length > NAME_MAX) n = n.replace(/:.*$/, "").trim().length >= 12 ? n.replace(/:.*$/, "").trim() : n;   // drop the gloss after a colon
+    if (n.length > NAME_MAX) n = n.slice(0, NAME_MAX - 1).replace(/[\s,;:–-]+\S*$/, "") + "…";
+    m.name = n;
+  }
+  // names stay unique per type (a dropdown choice is found by its name): a clash keeps the family in brackets
+  for (const t of ["movie", "series"]) {
+    const seen = new Map();
+    for (const m of MICROGENRES.filter(x => x.type === t)) {
+      if (seen.has(m.name)) { const tag = ` (${(FAM_SHORT[familyOf(m)] || "").toLowerCase()})`; m.name = (m.name.length + tag.length > NAME_MAX ? m.name.slice(0, NAME_MAX - tag.length - 1) + "…" : m.name) + tag; }
+      let k = 2; while (seen.has(m.name)) m.name = m.name.replace(/ ?\d*$/, "") + " " + k++;
+      seen.set(m.name, m);
+    }
+  }
+}

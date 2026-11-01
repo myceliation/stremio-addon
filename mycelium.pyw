@@ -53,6 +53,21 @@ def local_version():
         return None
 
 
+def local_build():
+    """Fingerprint of worker/src, worked out the way scripts/stamp.mjs does it on deploy."""
+    import hashlib
+    d = os.path.join(ROOT, "worker", "src")
+    try:
+        h = hashlib.sha1()
+        for f in sorted(x for x in os.listdir(d) if x.endswith(".js") and x != "build.js"):
+            h.update((f + "\n").encode())
+            with open(os.path.join(d, f), "rb") as fh:
+                h.update(fh.read())
+        return h.hexdigest()[:12]
+    except Exception:
+        return None
+
+
 def read_link():
     try:
         return open(LINK_FILE, encoding="utf-8").read().strip() or None
@@ -117,7 +132,7 @@ class App(tk.Tk):
         for row, (key, label, note, cmd) in enumerate([
             ("deploy", "1  Put online", "Uploads this folder's code to the site (after changes)", self.do_deploy),
             ("copy", "2  Make my copy", "Your private copy, with its settings page", self.do_copy),
-            ("stremio", "3  Add to Stremio", "Installs Mycelium + Watch History at the top", self.do_stremio),
+            ("stremio", "3  Add to Stremio", "Installs or updates Mycelium and its Discover add-ons, at the top", self.do_stremio),
             ("sync", "4  Sync my history", "Whatever you finish in Stremio joins Watched by itself", self.do_sync),
             ("check", "5  Check it works", "Quick check of your copy, or a full stress test", self.do_check),
             ("library", "6  Copy my library", "Optional: the Watchlist server keeps its own copy", self.do_library),
@@ -149,10 +164,18 @@ class App(tk.Tk):
         want = local_version()
         try:
             live = http(SITE + "/manifest.json").get("version")
+            try:
+                built = (http(SITE + "/version.json") or {}).get("build")
+            except Exception:
+                built = None                     # a site from before version.json existed
             if want and live != want:
                 ui("site", AMBER, f"version {live} is live; this folder has {want}: do step 1")
+            elif not built:
+                ui("site", AMBER, f"version {live} is live, but it can't say which code: do step 1")
+            elif built != local_build():
+                ui("site", AMBER, f"version {live} is live, but this folder has newer changes: do step 1")
             else:
-                ui("site", GREEN, f"version {live} is live")
+                ui("site", GREEN, f"version {live} is live and matches this folder")
         except Exception as e:
             ui("site", RED, f"not reachable ({str(e)[:40]}): do step 1")
         self.link = read_link()
@@ -166,16 +189,22 @@ class App(tk.Tk):
             except Exception:
                 ui("copy", RED, "saved link doesn't answer: do step 1, or step 2 for a new copy")
         prof = stremio_profile()
-        have = {(a.get("manifest") or {}).get("id"): a for a in prof.get("addons") or []}
+        addons = prof.get("addons") or []
+        # what your Stremio account actually has (this PC's own copy only catches up when Stremio syncs)
+        key = (prof.get("auth") or {}).get("key")
+        if key:
+            try:
+                addons = (stremio_api("addonCollectionGet", {"type": "AddonCollectionGet", "authKey": key, "update": True}) or {}).get("addons") or addons
+            except Exception:
+                pass
+        have = {(a.get("manifest") or {}).get("id"): a for a in addons}
+        mine_ids = [i for i in have if str(i).startswith("community.myceliation.mycelium")]
         if not prof:
             ui("stremio", GRAY, "couldn't read Stremio on this PC")
-        elif all(i in have for i in IDS):
-            mine = have[IDS[0]]
-            ver = (mine.get("manifest") or {}).get("version")
+        elif IDS[0] in have:
+            ver = (have[IDS[0]].get("manifest") or {}).get("version")
             note = "" if not want or ver == want else f"; Stremio has {ver}: do step 3 to update"
-            ui("stremio", GREEN if not note else AMBER, "both installed" + note)
-        elif any(i in have for i in IDS):
-            ui("stremio", AMBER, "only one of the two installed: do step 3")
+            ui("stremio", GREEN if not note else AMBER, f"installed, version {ver}, {len(mine_ids)} Mycelium add-ons" + note)
         else:
             ui("stremio", GRAY, "not installed yet: do step 3" if (prof.get("auth") or {}).get("key") else "sign in to Stremio first, then step 3")
         if token:
@@ -275,7 +304,7 @@ class App(tk.Tk):
         base, token = parse_token(self.link)
         if not token:
             return messagebox.showinfo("Add to Stremio", "Do step 2 first.")
-        urls = [f"{base}/{token}/manifest.json", f"{base}/{token}/history/manifest.json"]
+        urls = [f"{base}/{token}/manifest.json"]
         key = (stremio_profile().get("auth") or {}).get("key")
         if not key:
             self.clipboard_clear()
@@ -284,29 +313,42 @@ class App(tk.Tk):
             return messagebox.showinfo("Add to Stremio", "Stremio on this PC isn't signed in, so it can't be added "
                                        "automatically.\n\nStremio should now show an Install button. If it doesn't, "
                                        "the link is copied: paste it into the search box in Stremio's Add-ons page.")
-        try:
-            # the microgenre list changed since titles were last sorted: re-sort them all from this PC's TMDB details (quick)
-            ver = (http(f"{base}/manifest.json", timeout=30) or {}).get("version")
-            mark = os.path.join(ROOT, "data", "mycelium_retagged.txt")
-            if ver and (not os.path.exists(mark) or open(mark).read().strip() != ver):
-                sys.path.insert(0, os.path.join(ROOT, "tools"))
-                import retag_microgenres
-                retag_microgenres.run(base, token, say=lambda m: None)
-                open(mark, "w").write(ver)
-            # newly added titles get sorted into microgenres first, so the lists' Microgenre dropdown is current
-            for _ in range(20):
-                if http(f"{base}/{token}/api/mg-fill", {}, timeout=60).get("done"):
-                    break
-            http(f"{base}/{token}/api/mg-stats", {}, timeout=60)
-        except Exception:
-            pass
-        try:
-            # the Library's "import" dropdown: one entry per batch the offline tool imported (data\import_batches.json)
-            bf = os.path.join(ROOT, "data", "import_batches.json")
-            if os.path.isfile(bf):
-                http(f"{base}/{token}/api/batches", {"batches": json.load(open(bf, encoding="utf-8"))}, timeout=30)
-        except Exception:
-            pass
+        # the slow part (sorting titles into microgenres) runs in the background so this window keeps responding
+        win = tk.Toplevel(self)
+        win.title("Add to Stremio")
+        win.resizable(False, False)
+        status = tk.Label(win, text="Getting your add-ons ready… (sorting your saved titles into the current microgenres; "
+                          "the first time after an update this takes a minute or two)", font=("Segoe UI", 9), wraplength=420, justify="left")
+        status.pack(padx=14, pady=14)
+
+        def prep():
+            try:
+                # the microgenre list changed since titles were last sorted: re-sort them all from this PC's TMDB details (quick)
+                ver = (http(f"{base}/manifest.json", timeout=30) or {}).get("version")
+                mark = os.path.join(ROOT, "data", "mycelium_retagged.txt")
+                if ver and (not os.path.exists(mark) or open(mark).read().strip() != ver):
+                    sys.path.insert(0, os.path.join(ROOT, "tools"))
+                    import retag_microgenres
+                    retag_microgenres.run(base, token, say=lambda m: None)
+                    open(mark, "w").write(ver)
+                # newly added titles get sorted into microgenres first, so the lists' Microgenre dropdown is current
+                for _ in range(20):
+                    if http(f"{base}/{token}/api/mg-fill", {}, timeout=60).get("done"):
+                        break
+                http(f"{base}/{token}/api/mg-stats", {}, timeout=60)
+            except Exception:
+                pass
+            try:
+                # the Library's "import" dropdown: one entry per batch the offline tool imported (data\import_batches.json)
+                bf = os.path.join(ROOT, "data", "import_batches.json")
+                if os.path.isfile(bf):
+                    http(f"{base}/{token}/api/batches", {"batches": json.load(open(bf, encoding="utf-8"))}, timeout=30)
+            except Exception:
+                pass
+            self.after(0, lambda: (win.destroy(), self._stremio_install(base, token, key, urls)))
+        threading.Thread(target=prep, daemon=True).start()
+
+    def _stremio_install(self, base, token, key, urls):
         report = []      # (name, url, status) for every add-on this copy should have
         try:
             # Mycelium, Watch History, and the extra service add-ons (so every streaming service fits)
@@ -494,7 +536,8 @@ class App(tk.Tk):
                 self.after(0, lambda: status.config(text=f"Done: {n:,} finished titles copied to Watched. From now on the Watchlist "
                                                     "server window keeps it in sync every 30 minutes while it's open."))
             except Exception as e:
-                self.after(0, lambda: status.config(text=f"Couldn't copy: {e}", fg="red"))
+                msg = str(e)
+                self.after(0, lambda: status.config(text=f"Couldn't copy: {msg}", fg="red"))
             self.after(0, self.refresh)
         threading.Thread(target=run, daemon=True).start()
 
@@ -528,6 +571,9 @@ class App(tk.Tk):
         listing = messagebox.askyesno("Publish", "List Mycelium in Stremio's public Community add-ons (or refresh its listing)?\n\n"
                                       "If it's already listed you can say No: the listing points at your live site, so step 1 "
                                       "already updates what everyone gets.\n\n(GitHub is asked next either way.)")
+        threading.Thread(target=lambda: self._publish_work(listing), daemon=True).start()
+
+    def _publish_work(self, listing):
         out = []
         import time
         for n, (name, path) in enumerate([("Mycelium", "/manifest.json")] if listing else []):
@@ -547,6 +593,9 @@ class App(tk.Tk):
                 except Exception as e:
                     out.append(f"{name}: failed — {e}")
                     break
+        self.after(0, lambda: self._publish_github(out))
+
+    def _publish_github(self, out):
         if out:
             messagebox.showinfo("Publish", "\n".join(out) + "\n\nIt appears under Add-ons → Community once Stremio lists it.")
         if messagebox.askyesno("Publish to GitHub", "Publish on GitHub now?\n\n• this folder as github.com/myceliation/stremio-addon "

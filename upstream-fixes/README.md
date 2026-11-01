@@ -27,6 +27,13 @@ GitHub, push a branch, open a pull request. `submit-fixes.bat` does the git part
    point at an older Stremio or at a program that no longer exists.
    (Not compiled here: Inno Setup only runs on Windows. Their CI builds it on the PR.)
 
+4. **stremio-core-1-keep-place-on-type-switch.patch** (Stremio/stremio-core)
+   Switching Discover between Movies and Series resets the catalog and every filter
+   (genre, year, sort, add-on dropdowns), on every app: desktop, phone and TV all use
+   stremio-core for this. Fix: when the other type has a catalog with the same id
+   (same add-on preferred), switch to it and keep every filter it accepts. Unit test
+   included; `cargo test catalog_with_filters` passes (the new test fails without it).
+
 `Fix Stremio install links.bat` (in the main Stremio folder) fixes #3 on your own PC now.
 
 ## Issues worth filing (no patch: bigger changes or other people's code)

@@ -1,6 +1,7 @@
 import { json, html, CORS, parseExtra, cacheGet, cachePut, ALS, countingDB, used, spend } from "./util.js";
-import { buildManifest, historyManifest, publicManifest, RATING_FILTERS, listFilters, ADDON_ID, HISTORY_ID, servicePacks, packManifest, allServicesManifest, microgenresManifest, sidesManifest, mgPartPath, mgPartCount, libraryManifest, LIB_ALL } from "./manifest.js";
+import { buildManifest, historyManifest, publicManifest, RATING_FILTERS, listFilters, ADDON_ID, HISTORY_ID, servicePacks, packManifest, VERSION, allServicesManifest, microgenresManifest, sidesManifest, mgPartPath, mgPartCount, libraryManifest, libPartCount, LIB_ALL, fromPhones } from "./manifest.js";
 import { sidesSpec } from "./sides.js";
+import { BUILD } from "./build.js";
 import { BUILDERS, genreId, COUNTRIES_BY_NAME, WIDE_COUNTRIES } from "./catalogs.js";
 import { ITEM_META } from "./itemmeta.js";
 import { syncAwards, awardItems } from "./awardsync.js";
@@ -12,7 +13,7 @@ import * as I from "./importer.js";
 import { getUser, linkCreate, linkRead, datastoreMeta, datastorePut, libraryItem, reorderAddons } from "./stremio.js";
 import { configurePage, importPage, actPage, sharePage, historySetupPage, markPage, LOGO_SVG, HISTORY_SVG, tileSvg } from "./pages.js";
 import { PROVIDERS, REGIONS, normalizeProviders, MOVIE_GENRES, TV_GENRES } from "./providers.js";
-import { MICROGENRES, MG_BY_ID, matchMicrogenres, mgString, mgCurrent, familyOf } from "./microgenres.js";
+import { MICROGENRES, MG_BY_ID, matchMicrogenres, mgString, mgCurrent, familyOf, FAMILIES } from "./microgenres.js";
 import UI_PLUGIN from "./uiplugin.js";
 
 export default {
@@ -55,6 +56,7 @@ async function route(req, env, ctx, url, origin, p) {
   if (p[0] === "history.svg") return new Response(HISTORY_SVG, { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=86400", ...CORS } });
   if (p[0] === "tile" && p[1]) return new Response(tileSvg(p[1].replace(/\.svg$/, "")), { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=86400", ...CORS } });
   if (p[0] === "manifest.json") return json(publicManifest(origin));
+  if (p[0] === "version.json") return json({ version: VERSION, build: BUILD }, 200, { "cache-control": "no-store" });
   if ((p[0] === "history" || p[0] === "watched") && p[1] === "manifest.json") return json(publicManifest(origin, "history"));
   if (p[0] === "history" || p[0] === "watched") return html(historySetupPage({ origin }));
 
@@ -106,13 +108,13 @@ async function route(req, env, ctx, url, origin, p) {
 
   // the extra service add-ons: /{token}/services/{n}/… and /{token}/allservices/{movie|series}/…
   // 📚 Library by microgenre: /{token}/library/{movie|series}/…  (served by the same catalog code as the main add-on)
-  if (p[1] === "library" && p[2]) {
-    if (p[3] === "manifest.json") return json(libraryManifest(user, origin, p[2]), 200, { "cache-control": "max-age=60" });
+  if (/^library\d?$/.test(p[1] || "") && p[2]) {
+    if (p[3] === "manifest.json") return json(libraryManifest(user, origin, p[2], +p[1].slice(7) || 1), 200, { "cache-control": "max-age=60" });
     if (p[3] === "catalog") {
-      const type = p[4], id = (p[5] || "").replace(/\.json$/, ""), extra = parseExtra((p[6] || "").replace(/\.json$/, ""));
+      const type = p[4], id = (p[5] || "").replace(/\.json$/, ""), extra = fromPhones(id, parseExtra((p[6] || "").replace(/\.json$/, "")));
       if (extra.microgenre === LIB_ALL) delete extra.microgenre;
-      if (id !== "list.library") return json({ metas: [] });
-      try { return json({ metas: await catalog(env, user, type, id, extra) }, 200, { "cache-control": "max-age=60" }); }
+      if (!/^lib\.|^list\.library$/.test(id)) return json({ metas: [] });
+      try { return json({ metas: await catalog(env, user, type, "list.library", extra) }, 200, { "cache-control": "max-age=60" }); }
       catch { return json({ metas: [] }); }
     }
   }
@@ -124,7 +126,7 @@ async function route(req, env, ctx, url, origin, p) {
       return m ? json(m, 200, { "cache-control": "max-age=60" }) : json({ error: "no such pack" }, 404);
     }
     if (p[3] === "catalog") {
-      const type = p[4], id = (p[5] || "").replace(/\.json$/, ""), extra = parseExtra((p[6] || "").replace(/\.json$/, ""));
+      const type = p[4], id = (p[5] || "").replace(/\.json$/, ""), extra = fromPhones(id, parseExtra((p[6] || "").replace(/\.json$/, "")));
       if (!(id.startsWith("prov.") || id === "svc" || id.startsWith("mgf.") || id.startsWith("war.") || id === "prej")) return json({ metas: [] });
       try { return json({ metas: await catalog(env, user, type, id, extra) }, 200, { "cache-control": "max-age=60" }); }
       catch { return json({ metas: [] }); }
@@ -183,7 +185,7 @@ async function route(req, env, ctx, url, origin, p) {
       const ms = await microgenresOf(env, type, id, meta);
       const manifestUrl = encodeURIComponent(`${origin}/${T}/manifest.json`);
       meta.links = [...(meta.links || []), ...ms.slice(0, 14).map(m => ({ name: m.name.replace(/:.*$/, ""), category: "Microgenres",
-        url: `stremio:///discover/${encodeURIComponent(`${origin}/${T}/${mgPartPath(m.type, familyOf(m))}/${m.type}/manifest.json`)}/${m.type}/mgf.${familyOf(m)}?microgenre=${encodeURIComponent(m.name)}` }))];
+        url: `stremio:///discover/${encodeURIComponent(`${origin}/${T}/${mgPartPath(m.type, familyOf(m))}/${m.type}/manifest.json`)}/${m.type}/mgf.${familyOf(m)}?genre=${encodeURIComponent(m.name)}` }))];
     } catch { /* the page without microgenres */ }
     return json({ meta }, 200, { "cache-control": "max-age=3600" });
   }
@@ -198,7 +200,8 @@ async function route(req, env, ctx, url, origin, p) {
 
   if (p[1] === "stream" && (p[3] || "").startsWith("myc:")) {
     const t = tile(origin, T, user, (p[3] || "").replace(/\.json$/, ""));
-    return json({ streams: t ? [{ name: "🍄 Mycelium", title: t.action, externalUrl: t.url }] : [] }, 200, { "cache-control": "no-store" });
+    return json({ streams: t ? [{ name: "🍄 Mycelium", title: t.action, externalUrl: t.url },
+      ...(t.seriesUrl ? [{ name: "🍄 Mycelium", title: "Open it in Discover (series)", externalUrl: t.seriesUrl }] : [])] : [] }, 200, { "cache-control": "no-store" });
   }
 
   if (p[1] === "stream") {
@@ -327,7 +330,7 @@ async function api(req, env, ctx, url, origin, user, p) {
   if (p[0] === "addons") {
     const packs = servicePacks(user, origin, await S.getLists(env, user.uid));
     return json([`${origin}/${T}/manifest.json`, ...(user.settings.rows.historyAddon ? [`${origin}/${T}/history/manifest.json`] : []),
-      ...(user.settings.rows.library ? [`${origin}/${T}/library/movie/manifest.json`, `${origin}/${T}/library/series/manifest.json`] : []),
+      ...(user.settings.rows.library ? ["movie", "series"].flatMap(t => Array.from({ length: libPartCount(user, t) }, (_, i) => `${origin}/${T}/library${i ? i + 1 : ""}/${t}/manifest.json`)) : []),
       ...["movie", "series"].flatMap(t => Array.from({ length: mgPartCount(t) }, (_, i) => `${origin}/${T}/microgenres${i ? i + 1 : ""}/${t}/manifest.json`)),
       `${origin}/${T}/sides/movie/manifest.json`, `${origin}/${T}/sides/series/manifest.json`,
       `${origin}/${T}/allservices/movie/manifest.json`, `${origin}/${T}/allservices/series/manifest.json`,   // also carries 📺 TV channels
@@ -359,7 +362,7 @@ async function api(req, env, ctx, url, origin, user, p) {
     await ensureHomeServices(env, user).catch(() => {});
     const fresh = { [`${origin}/${T}/manifest.json`]: buildManifest(user, origin, lists),
                     [`${origin}/${T}/history/manifest.json`]: historyManifest(user, origin) };
-    for (const t of ["movie", "series"]) fresh[`${origin}/${T}/library/${t}/manifest.json`] = libraryManifest(user, origin, t);
+    for (const t of ["movie", "series"]) for (let i = 1; i <= libPartCount(user, t); i++) fresh[`${origin}/${T}/library${i > 1 ? i : ""}/${t}/manifest.json`] = libraryManifest(user, origin, t, i);
     for (const t of ["movie", "series"]) for (let i = 1; i <= mgPartCount(t); i++) fresh[`${origin}/${T}/microgenres${i > 1 ? i : ""}/${t}/manifest.json`] = microgenresManifest(user, origin, t, i);
     for (const t of ["movie", "series"]) fresh[`${origin}/${T}/sides/${t}/manifest.json`] = sidesManifest(user, origin, t);
     for (const t of ["movie", "series"]) fresh[`${origin}/${T}/allservices/${t}/manifest.json`] = allServicesManifest(user, origin, t);
@@ -472,7 +475,9 @@ async function catalog(env, user, type, id, extra) {
   }
   if (id === "rated") return [];            // star ratings are gone (Stremio's Like / Love replace them); old installs see an empty row
   if (id === "director" || id === "actor") return people(env, id, extra.search, skip);
-  if (id === "tools") return skip ? [] : ["import", "settings", "history", "share"].map(k => tileMeta(env.ORIGIN, user, "myc:tool:" + k));
+  // the 🍄 Mycelium row: import, settings, your lists, then one tile per microgenre family (opens it in Discover)
+  if (id === "tools") return skip ? [] : [...["import", "settings", "lists"].map(k => "myc:tool:" + k), ...FAMILIES.map(([f]) => "myc:fam:" + f)]
+    .map(k => tileMeta(env.ORIGIN, user, k)).filter(Boolean);
   if (id === "import") {
     const m = (extra.search || "").match(/https?:\/\/\S+/);
     if (!m || skip) return [];
@@ -497,7 +502,7 @@ async function catalog(env, user, type, id, extra) {
     spec = await BUILDERS.forYou(type, extra, c);
   }
   else if (kind === "mgf") {                     // a family hub: the microgenre comes from its dropdown
-    const m = MICROGENRES.find(x => x.name === extra.microgenre && x.type === type);
+    const m = arg === "mine" ? null : MICROGENRES.find(x => x.name === extra.microgenre && x.type === type);
     if (m) spec = BUILDERS.microgenre(type, extra, c, m.id);
     // festival and award rows: this year's winners and nominees (added by the hourly job) before the starting list
     if (m && spec && AWARD_IDS.has(m.id)) {
@@ -505,8 +510,8 @@ async function catalog(env, user, type, id, extra) {
       const have = new Set(live.map(x => x.id));
       spec = { ...spec, static: [...live, ...(spec.static || []).filter(x => !have.has(x.id))] };
     }
-    else if (/^✎ /.test(extra.microgenre || "")) {      // one of your own genres, listed under Everything else
-      const cu = (user.settings.custom || []).find(x => "✎ " + (x.name || x.query) + " (yours)" === extra.microgenre);
+    else if (arg === "mine" || /^✎ /.test(extra.microgenre || "")) {      // one of your own genres (✎ Your own genres)
+      const cu = (user.settings.custom || []).find(x => (x.name || x.query) === extra.microgenre || "✎ " + (x.name || x.query) + " (yours)" === extra.microgenre);
       if (cu) spec = await BUILDERS.mixer(type, { ...extra, microgenre: undefined, search: cu.query }, c);
     }
   }
@@ -617,8 +622,18 @@ function tile(origin, T, user, id) {
   const base = `${origin}/${T}`;
   if (id === "myc:tool:import") return { name: "Import a list", poster: `${origin}/tile/import.svg`, action: "Open the list importer",
     url: `${base}/import`, description: "Paste a Letterboxd, IMDb, TMDB or Wikipedia list (or any page that mentions films) and add it to your Library, Watched, a shelf or one of your lists.\n\nTip: paste a list link straight into Stremio's search and an import tile appears." };
-  if (id === "myc:tool:settings") return { name: "Settings and lists", poster: `${origin}/tile/settings.svg`, action: "Open Mycelium settings",
-    url: `${base}/configure`, description: "Rows, streaming services and regions, microgenres, your named lists, sharing." };
+  if (id === "myc:tool:settings") return { name: "Settings", poster: `${origin}/tile/settings.svg`, action: "Open Mycelium settings",
+    url: `${base}/configure`, description: "Rows, streaming services and regions, Stremio account, sharing what you loved and watched." };
+  if (id === "myc:tool:lists") return { name: "Your lists", poster: `${origin}/tile/lists.svg`, action: "Open your named lists",
+    url: `${base}/configure#lists`, description: "Make, rename and fill your own lists, and choose which ones show as rows." };
+  if (id.startsWith("myc:fam:")) {
+    const fam = id.slice(8), f = FAMILIES.find(([k]) => k === fam);
+    if (!f) return null;
+    const hub = t => `stremio:///discover/${encodeURIComponent(`${base}/${mgPartPath(t, fam)}/${t}/manifest.json`)}/${t}/mgf.${fam}`;
+    const n = MICROGENRES.filter(m => !m.allof && m.family === fam).length;
+    return { name: f[1], poster: `${origin}/tile/fam-${fam}.svg`, action: "Open it in Discover (films)", url: hub("movie"), seriesUrl: hub("series"),
+      description: `${n} microgenres. Opens the family in Discover: pick a microgenre, then genre, year and sort.` };
+  }
   if (id === "myc:tool:history") return { name: "Watch History add-on", poster: `${origin}/tile/history.svg`, action: "Set up Watch History",
     url: `${base}/history`, description: "A separate add-on with just your watched rows, merged with your Stremio history." };
   if (id === "myc:tool:share") return { name: "Share what I loved and watched", poster: `${origin}/tile/share.svg`, action: "Open my public page",
