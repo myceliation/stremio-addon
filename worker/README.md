@@ -6,8 +6,8 @@ Mycelium is everything the offline Stremio suite did, now as a hosted Stremio ad
 - **📚 Library, ✔ Watched, shelves and your own named lists**, each shown as a Stremio row.
   In Discover every list gets separate dropdowns that combine: **Genre**, **And** (a second
   genre), **Year** (single years or decades), **Language**, **Show** (not watched yet,
-  watched, loved, rated by me, rated 4★+, not rated yet) and **Sort by** (recently/oldest
-  added, newest/oldest releases, TMDB rating, my rating, A–Z, Z–A, shuffle of the day).
+  watched, loved or liked, loved, liked) and **Sort by** (recently/oldest added,
+  newest/oldest releases, TMDB rating, A–Z, Z–A, shuffle of the day).
   A 17,000-title Library sorted and filtered is worked out once per change and cached, so
   paging through it stays fast and inside the free tier. Each row is also searchable from
   Stremio's search.
@@ -15,24 +15,29 @@ Mycelium is everything the offline Stremio suite did, now as a hosted Stremio ad
   Wikipedia list, or any text with titles), give a link, or upload an IMDb or Letterboxd
   CSV. Mycelium finds every title and shows matches with a confidence score. You pick what
   to keep, and it goes into the list you chose: Library, Watched, any shelf, an existing
-  list or a new one. Ratings in CSVs are kept.
+  list or a new one. Star ratings in CSVs aren't used (Mycelium follows Stremio's Like and Love).
   - **Letterboxd:** lists, watchlists, /films/ and diary pages, every page of them
   - **TMDB:** lists, collections, keywords, people and companies
   - **Wikipedia:** list articles (it also follows "List of … : A, B, C" index pages) and
     categories (two levels of subcategories). It resolves through Wikidata, so only real
     films and series get in.
   - **IMDb:** paste the page or use its CSV. IMDb blocks server requests to list pages.
-- **Watch History** (`/history`): a separate add-on with its own setup page and name. It shows
-  just your Watched rows, plus Still watching and Watched more than once when connected to
-  Stremio. It's hosted on the same site and shares accounts, but needs nothing from Mycelium.
-- **★ Ratings** with a public share page that friends can install as rows.
+- **Stremio's Like and Love** fill Liked and Loved, and what you finish in Stremio joins Watched,
+  once your Stremio account is connected. Marking something in Mycelium is copied back to Stremio.
+- **A share page** of what you loved, liked and watched, which friends can also install as rows.
+- **Watch History** (`/history`): an optional separate add-on with just your Watched rows. Stremio
+  now shows what you've watched by itself, so it's off unless you turn it on under Rows.
 - **A "🍄 Mycelium" entry on every title**: add to Library, mark watched, shelve, put on any
-  list, rate. It works on PC, phone and TV.
+  list. It works on PC, phone and TV.
+- **Discover add-ons** (installed by the Mycelium window's step 3, or the settings page's Update
+  button): microgenres by family, Library by microgenre, wars from every side, and every streaming
+  service and TV channel. Phones and TVs only show Discover's "Genre" dropdown, so in these add-ons
+  that dropdown holds the microgenre (or service, or side); on PC the ordinary genre is under "And".
 - **Streaming services for any region:** the service list comes live from TMDB (JustWatch
   data) for whichever of ~140 regions you pick, with Select all. Each service row has a
   dropdown to switch between your regions and defaults to one where that service exists.
-- **From inside Stremio:** a 🍄 Mycelium row with Import / Settings / Watch History / Share
-  tiles. Paste any list link into Stremio's search and an "Import this list" tile appears.
+- **From inside Stremio:** a 🍄 Mycelium row with Import, Settings and Lists tiles and one tile
+  per microgenre family. Paste any list link into Stremio's search and an "Import this list" tile appears.
 - **Microgenres everywhere:** every title page in Stremio, from any add-on, lists the microgenres
   it belongs to as tappable links (Mycelium serves the page from Cinemeta's details plus that row; a
   settings checkbox turns it off). Saved lists get a **Microgenre** dropdown built from the microgenres
@@ -95,10 +100,13 @@ project folder) starts the official app pointed at it, and you get:
 
 - a 🕓 **History** tab in the side bar: what Stremio saved on that device plus your Watched
   list, with one button to copy Stremio's finished titles into Watched
-- Library / Watched / shelf / list buttons and star ratings on every title, from any add-on
+- Library / Watched / shelf / list buttons on every title, from any add-on
+- Movies ⇄ Series in Discover keeps your place in Mycelium's add-ons (only in this interface:
+  the official apps reset it; the fix is offered to Stremio as a pull request)
 - the 🧪 multi-genre mixer in Discover
 
-Nothing in Stremio is modified. Opening Stremio normally gives you the plain app again.
+Videos don't play in this interface; use normal Stremio to watch. Nothing in Stremio is
+modified, and opening Stremio normally gives you the plain app again.
 An add-on can't switch this on by itself (add-ons are only web addresses Stremio asks for
 rows), but **`Make Mycelium the default.bat`** points every Stremio shortcut (desktop,
 Start menu, taskbar) and stremio:// links at it; `Undo Mycelium default.bat` reverses it.
@@ -132,13 +140,16 @@ daily limits, requests just fail until the next day.
   syncs installed add-ons, link included, to every device on the same Stremio account, so your
   shelves follow you without Mycelium ever seeing your Stremio login.
 - Treat the install link like a password: whoever has it can edit your shelves. It can't
-  touch your Stremio account. The ratings share link is a separate read-only ID.
+  touch your Stremio account. The share link is a separate read-only ID.
 - **History on a computer** comes from the Stremio Enhanced / Community v5 / userscript plugin,
   which reads Stremio's local storage on that machine and sends nothing anywhere.
 - **History rows on phone/TV are opt-in.** Connecting uses Stremio's own code login
   (link.stremio.com), which creates a *separate* Stremio session. That session key is stored
-  AES-GCM-encrypted (key = the `AUTH_SECRET` Worker secret), used only to read the library, and
-  deleted when you press Disconnect. Signing that session out in Stremio also revokes it.
+  AES-GCM-encrypted (key = the `AUTH_SECRET` Worker secret). It's used to read your library and
+  Like / Love, and to copy back what you mark watched, liked or loved in Mycelium. It also puts new versions of
+  Mycelium's add-ons into your Stremio account (Stremio keeps the copy it installed); turn that off in Rows. It's deleted
+  when you press Disconnect. The code login itself runs in your browser or in the Mycelium window,
+  because Stremio's code service doesn't answer Cloudflare's servers. Signing that session out in Stremio also revokes it.
   Email and password are never asked for.
 - Account creation is rate-limited per IP. "Delete my Mycelium data" wipes everything for that
   install.

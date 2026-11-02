@@ -38,3 +38,6 @@ worker/.wrangler/
 worker/.dev.vars
 .env
 *.lnk
+
+# which catalogues.sql was last loaded into the database
+worker/.catalogues-loaded

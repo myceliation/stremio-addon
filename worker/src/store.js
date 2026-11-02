@@ -48,6 +48,7 @@ export const DEFAULT_SETTINGS = {
   hideWatched: true,          // keep watched titles out of discovery rows and the Library row
   shelveButton: true,
   mgLinks: true,
+  autoUpdate: true,           // with Stremio connected: new versions of Mycelium's add-ons are put in your account by themselves
   serviceRows: false,
   serviceHome: false,         // true: Home rows for the 6 biggest services where you live         // true: every streaming service gets its own Home row (extra "Services" add-ons)              // title pages list their microgenres (Mycelium serves the page, from Cinemeta)
 };
@@ -75,7 +76,7 @@ export async function insertMany(env, table, cols, rows, tail = "ON CONFLICT DO 
 }
 
 // ── users ────────────────────────────────────────────────────────────────────
-const rowToUser = r => r && { ...r, settings: mergeSettings(JSON.parse(r.settings || "{}")) };
+export const rowToUser = r => r && { ...r, settings: mergeSettings(JSON.parse(r.settings || "{}")) };
 
 export async function userByToken(env, token) {
   if (!token || token.length < 30) return null;
@@ -160,6 +161,21 @@ export async function membership(env, uid, ids) {
 }
 
 /** Ids to keep out of discovery rows (cached per user until something changes). */
+/** A studio's or channel's whole catalogue (Wikipedia lists + Wikidata): [[imdb, name, year, countries, genres], …], best-known first. */
+export async function catalogueItems(env, key) {
+  const ck = "cat:" + key;
+  const hit = await cacheGet(ck);
+  if (hit) return hit;
+  let out = [];
+  try {
+    const r = await db(env).prepare("SELECT data FROM cat_items WHERE row=? ORDER BY part").bind(key).all();
+    for (const x of r.results || []) out.push(...JSON.parse(x.data));
+  } catch { return []; }                       // table not loaded yet
+  const items = out.map(([id, name, year, c, g]) => ({ id, name, year, meta: [c || "", g || ""] }));
+  await cachePut(ck, items, 6 * 3600);
+  return items;
+}
+
 export async function excludedIds(env, user) {
   const ver = await version(user.uid);
   const key = `excl:${user.uid}:${ver}:${user.settings.hideIgnored}:${user.settings.hideWatched}`;

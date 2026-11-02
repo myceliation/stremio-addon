@@ -30,11 +30,12 @@ export const addonCollectionSet = (authKey, addons) => call("addonCollectionSet"
 // Stremio keeps a snapshot of each add-on's manifest from install time and never re-reads it, so new
 // rows, lists and dropdowns only show up after a reinstall. `fresh` ({transportUrl: manifest}) swaps
 // the snapshot for the current manifest, which is what reinstalling does, without losing the position.
-export async function reorderAddons(authKey, where, ids, fresh = {}) {
+export async function reorderAddons(authKey, where, ids, fresh = {}, { onlyIfInstalled = false } = {}) {
   // ids: Mycelium's own add-on ids; anything starting with ids[0] (the service packs) counts as ours too
   const mineId = id => ids.includes(id) || (id || "").startsWith(ids[0] + ".");
   const idOf = a => (a.manifest || {}).id;
   const current = (await addonCollectionGet(authKey)).addons || [];
+  if (onlyIfInstalled && !current.some(a => mineId(idOf(a)))) return { ok: false, skipped: "not installed" };   // they removed it: leave it out
   const rest = current.filter(a => !mineId(idOf(a)));
   // ours, in the order given: refreshed manifests, new packs added, packs no longer needed dropped
   const mine = Object.entries(fresh).filter(([, m]) => m && m.id).map(([url, m]) => {

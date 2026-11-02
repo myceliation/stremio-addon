@@ -231,7 +231,7 @@ export const MICROGENRES = [{"id":"folk-horror","name":"Folk horror: rituals, fi
 {"id":"religion","name":"Faith and doubt","type":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":20,"with_genres":"18","without_genres":"16,10751","with_keywords":"11001|6150|10093"}},
 {"id":"politics","name":"Politics and elections","type":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":20,"with_genres":"18|53|35","without_genres":"28,12,14,16","with_keywords":"6078|6085|6083"}},
 {"id":"revolutions","name":"Revolutions","type":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":20,"with_genres":"18|36|10752","without_genres":"878","with_keywords":"2020"}},
-{"id":"immigrants","name":"Leaving home","type":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":20,"with_genres":"18","without_genres":"16,10751","with_keywords":"2356|1900"}},
+{"id":"immigrants","name":"Immigrants and new lives","type":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":20,"with_genres":"18","without_genres":"16,10751","with_keywords":"2356|1900"}},
 {"id":"biopics-musicians","name":"Musician biopics","type":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":20,"without_genres":"16,10751","with_keywords":"5565,4048"}},
 {"id":"based-on-play","name":"Adapted from plays","type":"movie","params":{"sort_by":"popularity.desc","vote_count.gte":20,"without_genres":"16,10751","with_keywords":"10181"}},
 {"id":"novels-lit","name":"Literary adaptations","type":"movie","params":{"sort_by":"vote_count.desc","vote_count.gte":20,"with_genres":"18","without_genres":"16,10751","with_keywords":"818"}},
@@ -518,7 +518,7 @@ export const MICROGENRES = [{"id":"folk-horror","name":"Folk horror: rituals, fi
 {"id":"religion-series","name":"Faith and doubt (series)","type":"series","params":{"sort_by":"popularity.desc","with_keywords":"11001|6150|10093","with_genres":"18","without_genres":"16,10751"}},
 {"id":"politics-series","name":"Politics and elections (series)","type":"series","params":{"sort_by":"popularity.desc","with_keywords":"6078|6085|6083","with_genres":"18|35","without_genres":"28,12,14,16"}},
 {"id":"revolutions-series","name":"Revolutions (series)","type":"series","params":{"sort_by":"popularity.desc","with_keywords":"2020","with_genres":"18|10768","without_genres":"878"}},
-{"id":"immigrants-series","name":"Leaving home (series)","type":"series","params":{"sort_by":"popularity.desc","with_keywords":"2356|1900","with_genres":"18","without_genres":"16,10751"}},
+{"id":"immigrants-series","name":"Immigrants and new lives (series)","type":"series","params":{"sort_by":"popularity.desc","with_keywords":"2356|1900","with_genres":"18","without_genres":"16,10751"}},
 {"id":"based-on-play-series","name":"Adapted from plays (series)","type":"series","params":{"sort_by":"popularity.desc","with_keywords":"10181","without_genres":"16,10751"}},
 {"id":"novels-lit-series","name":"Literary adaptations (series)","type":"series","params":{"sort_by":"popularity.desc","with_keywords":"818","with_genres":"18","without_genres":"16,10751"}},
 {"id":"love-triangles-series","name":"Love triangles (series)","type":"series","params":{"sort_by":"popularity.desc","with_keywords":"128","without_genres":"16,10751"}},
@@ -673,6 +673,8 @@ for (const r of FAM2_MG) {
     continue;
   }
   const fam = r.family;
+  // a studio's or channel's whole catalogue: best-known first (by popularity, this week's shorts and specials came first)
+  if ((fam === "studios" || fam === "channels") && r.params && (!r.params.sort_by || r.params.sort_by === "popularity.desc")) r.params = { ...r.params, sort_by: "vote_count.desc" };
   const params = Object.keys(r.params || {}).length ? { sort_by: "popularity.desc", ...r.params,
     ...(/^other-(awards|collections)/.test(r.id) ? { [r.type === "series" ? "first_air_date.lte" : "primary_release_date.lte"]: TODAY_ } : {}) } : null;
   const clash = MICROGENRES.some(x => x.type === r.type && x.name === r.name);
@@ -824,7 +826,7 @@ export function matchMicrogenres(type, info) {
 }
 // stored as "m533|id|id|": the prefix changes whenever the microgenre list does, so titles sorted
 // against an older list get sorted again
-export const MG_TAG = "m" + MICROGENRES.length + "f";   // change the letter whenever the matching rules change
+export const MG_TAG = "m" + MICROGENRES.length + "g";   // change the letter whenever the matching rules change
 export const mgString = ms => MG_TAG + "|" + ms.map(m => m.id).join("|") + (ms.length ? "|" : "");
 export const mgCurrent = mg => typeof mg === "string" && mg.startsWith(MG_TAG + "|");
 
@@ -855,31 +857,33 @@ export const FAMILY_GROUPS = [
   ["Genres & moods", ["horror", "scifi", "futures", "crime", "comedy", "romance", "mood", "cult", "extreme", "razzies"]],
   ["Subjects & everything else", ["nature", "arts", "sports", "growing", "life"]],
 ];
-const G = (m, ...ids) => String((m.params || {}).with_genres || "").split(/[,|]/).some(x => ids.includes(+x));
+// a row's TMDB genre counts for its family when every title must have it ("27" or "27,53"); in an either-or list
+// ("878|99|18": sci-fi or documentary or drama) only the first one does, so a Moon row isn't filed under Documentaries
+const G = (m, ...ids) => { const g = String((m.params || {}).with_genres || ""); return (g.includes("|") ? [g.split("|")[0]] : g.split(",")).some(x => ids.includes(+x)); };
 const RULES = {
   cult: m => /pre-code|nunsploit|exploit|grindhouse|psychotronic|nasties|camp classics|campy|b-movie|cult classic|softcore|erotic|mondo|midnight|low-budget|transgress|extremity|so bad/i.test(m.name),
   animation: m => G(m, 16) || /\banimat|anime\b|claymation|stop-motion|cutout|manga|anime|cgi|cartoon|mecha|isekai/i.test(m.name),
   docs: m => G(m, 99) || /documentar|docuseries|\bdocs\b|cooking shows|travel shows|wildlife|olympic|concert films/i.test(m.name),
   horror: m => G(m, 27) || /horror|slasher|zombie|vampire|ghost|haunt|demon|witch|gore|creature|monster|possession|curse|cannibal|werewolf|doll|exorcis|occult|satan|giallo|bigfoot|cryptid|devil|graveyard|lovecraft|masked killer|terror|supernatural|ghoul|halloween|voodoo|home invasion/i.test(m.name),
-  mood: m => /melanchol|whimsical|philosoph|nihil|ending|bottle|surreal|dreamlike|slow-burn|macabre|hallucinat|madness|twist|dreams|\bstage\b|plays|one room|experimental|point-of-view|twins|semi-autobio|one night|anthology|black-and-white|silent|real time/i.test(m.name),
-  war: m => G(m, 10752, 10768, 36, 37) || /\bwars?\b|world war|napoleonic|samurai|ninja|medieval|ancient|victorian|period|jidaigeki|peplum|western|histor|cold war|vietnam|troubles|genocide|partition|1940s|wwii|pirate|swashbuckl|submarine/i.test(m.name),
-  scifi: m => G(m, 878, 14, 10765) || /sci-fi|space|alien|robot|time|dystop|cyber|virtual|parallel|apocalyp|pandemic|mutant|moon|astronaut|hacker|surveillance|superhero|fantasy|sorcery|tokusatsu|kaiju|artificial|body swap|memory|contact|end of the world|after the end|clone|cyborg|genetic|shapeshift|invisib|utopia|nuclear|climate/i.test(m.name),
+  mood: m => /nonlinear|real time|art house|faux|psychedel|melanchol|whimsical|philosoph|nihil|ending|bottle|surreal|dreamlike|slow-burn|macabre|hallucinat|madness|twist|dreams|\bstage\b|plays|one room|experimental|point-of-view|twins|semi-autobio|one night|anthology|black-and-white|silent|real time/i.test(m.name),
+  war: m => G(m, 10752, 10768, 36, 37) || /\bwars?\b|world war|napoleonic|samurai|ninja|medieval|ancient|victorian|period|jidaigeki|peplum|western|histor|revolution|cold war|vietnam|troubles|genocide|partition|1940s|wwii|pirate|swashbuckl|submarine/i.test(m.name),
+  scifi: m => G(m, 878, 14, 10765) || /sci-fi|space|alien|robot|time travel|time loop|time-travel|dystop|cyber|virtual|parallel|apocalyp|pandemic|mutant|moon|astronaut|hacker|surveillance|superhero|fantasy|sorcery|tokusatsu|kaiju|artificial|body swap|memory|contact|end of the world|after the end|clone|cyborg|genetic|shapeshift|invisib|utopia|nuclear|climate/i.test(m.name),
   crime: m => G(m, 53, 80, 9648) || /crime|heist|mafia|\bmob\b|cartel|prison|detective|noir|spy|spies|hitm|assassin|cops?\b|con artist|serial killer|vigilante|courtroom|legal|kidnap|hostage|gangster|yakuza|thriller|myster|private eye|police|femme fatale|outlaw|whodunit|robber|journalist/i.test(m.name),
   comedy: m => G(m, 35) || /comed|sitcom|spoof|parod|satir|absurd|slapstick|stoner|sketch|mockumentar/i.test(m.name),
-  romance: m => G(m, 10749) || /romance|love|wedding|relationship|forbidden|triangle|marriage/i.test(m.name),
+  romance: m => G(m, 10749) || /romance|\blove\b|wedding|relationship|forbidden|triangle|marriage/i.test(m.name),
   world: m => !!((m.params || {}).with_origin_country || (m.params || {}).with_original_language) || /korean|japanese|french|italian|nordic|british|bollywood|spanish|german|turkish|australian|hong kong|soviet|iranian|indian|mexican|brazil|canadian|canuck/i.test(m.name),
   nature: m => /insect|swamp|bayou|wetland|mushroom|fung|spore|shark|dinosaur|whale|dolphin|river|wild|animal|bird|natural disaster|ocean/i.test(m.name),
-  arts: m => /punk|hip-hop|jazz|metal|dance|ballet|painter|artist|photograph|musician|rock|magician|circus|making movies|making series|hollywood|literary|music|band|concert|theater|theatre/i.test(m.name),
+  arts: m => /punk|hip-hop|jazz|metal|dance|ballet|painter|(?<!con )artist|photograph|musician|rock|magician|circus|making movies|making series|hollywood|literary|music|band|concert|theater|theatre/i.test(m.name),
   sports: m => /boxing|baseball|surf|skate|chess|climb|martial|kung fu|gambl|casino|sport/i.test(m.name),
   growing: m => /school|coming of age|midlife|growing old|grief|loneli|addiction|sibling|fathers|mothers|friendship|queer|faith|leaving home|teen|college|family/i.test(m.name),
-  places: m => /new york|paris|tokyo|texas|las vegas|new orleans|los angeles|london|island|jungle|forest|desert|snowbound|farm|train|road|small-town|hotel|castle|house|station|beach|ocean|sea\b|mountain|city|suburb/i.test(m.name),
+  places: m => !/^art house$/i.test(m.name) && /\b(new york|paris|tokyo|texas|las vegas|new orleans|los angeles|london|islands?|jungles?|forests?|deserts?|snowbound|farms?|trains?|road|small-town|hotels?|castles?|houses?|stations?|beach(es)?|ocean|sea|mountains?|city|cities|suburbs?)\b/i.test(m.name),
 };
 // a microgenre can sit in two families (Italian giallo: Horror and World cinema; Horror comedies: Horror and
 // Comedy), so it's found wherever you'd look for it; its first family is where title-page links point
 const FAMILIES_CACHE = new Map();
 export function familiesOf(m) {
   if (FAMILIES_CACHE.has(m.id)) return FAMILIES_CACHE.get(m.id);
-  if (m.family) { FAMILIES_CACHE.set(m.id, [m.family]); return [m.family]; }
+  if (m.family) { const f = [m.family, ...(m.also || [])]; FAMILIES_CACHE.set(m.id, f); return f; }
   const all = FAMILIES.map(([k]) => k).filter(k => RULES[k] && RULES[k](m));
   if (EXTREME.has(m.id)) all.unshift("extreme");
   const out = all.length ? [...new Set(all)].slice(0, 2) : ["life"];
@@ -920,11 +924,24 @@ export function familyOf(m) {
   }
 }
 
+// the Moon: every film set there or about it lives in Places & settings; Documentaries keeps only the documentaries
+MICROGENRES.push(
+  { id: "moon-docs", name: "Moon documentaries", type: "movie", family: "docs", params: { sort_by: "popularity.desc", with_keywords: "305", with_genres: "99" } },
+  { id: "moon-docs-series", name: "Moon documentaries", type: "series", family: "docs", params: { sort_by: "popularity.desc", with_keywords: "305", with_genres: "99" } });
+for (const m of MICROGENRES.slice(-2)) MG_BY_ID[m.id] = m;
+
 // rows that now live in the India and Anime families (they were in World cinema and Animation)
 {
-  const MOVE = { india: ["bollywood", "tamil", "nc-malayalam", "nc-telugu", "nc-bengali", "nc-marathi-kannada", "nc-india-series"],
+  const MOVE = { places: ["the-moon", "the-moon-series"], mood: ["art-house", "faux-docs", "real-time", "nonlinear", "psychedelic"],
+                 crime: ["con-artists", "con-artists-series"], cult: ["grindhouse"], war: ["harrowing-war"], growing: ["immigrants", "immigrants-series"], india: ["bollywood", "tamil", "nc-malayalam", "nc-telugu", "nc-bengali", "nc-marathi-kannada", "nc-india-series"],
                  anime: ["anime-films", "tv-anime", "tv-mecha", "tv-isekai", "tv-slice-of-life", "manga-films", "manga-series"] };
   for (const [fam, ids] of Object.entries(MOVE)) for (const id of ids) for (const m of MICROGENRES) if (m.id === id) m.family = fam;
+  for (const m of MICROGENRES) if (m.id === "the-moon" || m.id === "the-moon-series") m.also = ["scifi"];      // listed in both
+  // queries that let the wrong titles in: climate collapse is fiction (nature documentaries also carry "climate change"),
+  // and shōnen battle series need TMDB's shōnen keyword, not just "anime" plus action
+  const FIX = { climate: { without_genres: "16,99" }, "climate-series": { without_genres: "16,99" },
+                "an-shonen": { with_keywords: "207826", with_genres: "16,10759" } };
+  for (const m of MICROGENRES) if (FIX[m.id] && m.params) Object.assign(m.params, FIX[m.id]);
   FAMILIES_CACHE.clear(); FAMILY_CACHE.clear();
 }
 

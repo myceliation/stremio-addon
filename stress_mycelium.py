@@ -136,7 +136,7 @@ def main():
         ("Wikipedia list article", {"url": "https://en.wikipedia.org/wiki/List_of_films_considered_the_worst", "wlang": "en"}),
         ("IMDb list link (should explain to paste instead)", {"url": "https://www.imdb.com/list/ls000004717/"}),
     ]
-    targets = ["library", "l:" + lids[0], "loved", "rated", "l:" + lids[1]]
+    targets = ["library", "l:" + lids[0], "loved", "liked", "l:" + lids[1]]
     for n, (name, body) in enumerate([] if os.environ.get("STRESS_SKIP_IMPORT") else sources):
         target = targets[n % len(targets)]
         print(f"  …  {name}", flush=True)
@@ -303,11 +303,11 @@ def main():
         note("ok" if n else "warn", f"lists filtered to microgenre '{o}'", f"{n} titles")
     settings = req(f"{U}/api/settings")
     share = settings["share"].rsplit("/", 1)[-1]
-    for path in [f"/u/{share}", f"/u/{share}/manifest.json", f"/u/{share}/catalog/movie/rated.json", f"/u/{share}/catalog/movie/loved.json",
+    for path in [f"/u/{share}", f"/u/{share}/manifest.json", f"/u/{share}/catalog/movie/watched.json", f"/u/{share}/catalog/movie/loved.json",
                  f"{U}/act/movie/tt0084787", f"{U}/stream/movie/tt0084787.json", f"{U}/meta/movie/myc:tool:import.json",
                  f"{U}/import", f"{U}/configure", "/history", "/configure", "/ui/", "/ui/mycelium.js", "/manifest.json", "/history/manifest.json"]:
         safe(path, lambda path=path: req(path, raw=True)) and note("ok", path)
-    for lst in ["library", "watched", "loved", "l:" + lids[0], "rated"]:
+    for lst in ["library", "watched", "loved", "liked", "l:" + lids[0]]:
         safe(f"export {lst}", lambda lst=lst: req(f"{U}/api/export?list={lst}&format=json")) is not None and note("ok", f"export {lst}")
         safe(f"export csv {lst}", lambda lst=lst: req(f"{U}/api/export?list={lst}", raw=True))
     counts = settings.get("counts", {})

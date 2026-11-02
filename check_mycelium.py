@@ -1,7 +1,7 @@
 """
-Checks that Mycelium, Watch History, the in-app interface and the importer all work,
-and (after migrate_to_mycelium.py) that everything from the offline tool arrived:
-every title, its genres and language, and your ratings.
+Checks that Mycelium, its Discover add-ons, Watch History, the in-app interface and the importer
+all work, and (after migrate_to_mycelium.py) that everything from the offline tool arrived:
+every title, its genres and language.
 
     python check_mycelium.py "<your Mycelium install link>"
     python check_mycelium.py "<link>" --quick          # skip the importer and migration checks
@@ -121,8 +121,8 @@ def main():
         else:
             say("WARN", "Library row is turned off in settings; skipped")
 
-    # ── 4. Watch History add-on ──────────────────────────────────────────────
-    head("4. Watch History add-on")
+    # ── 4. Watch History (optional add-on; the 'Mark as watched' entry and syncing work either way) ──
+    head("4. Watch History")
     hm = check("Watch History manifest", lambda: fetch(U + "/history/manifest.json")[0])
     if hm:
         say("PASS", f"manifest: {', '.join(sorted(set(c['name'] for c in hm['catalogs'])))}")
@@ -148,11 +148,38 @@ def main():
             say("PASS" if conn.get("connected") else "WARN", "Stremio account connected for automatic history",
                 "" if conn.get("connected") else "optional: connect it on the settings page to get Still watching / Rewatched rows")
 
+    # ── 5. Discover add-ons (microgenres, Library by microgenre, wars, streaming & channels) ──
+    head("5. Discover add-ons: every catalog loads, and phones and TVs can pick from it")
+    urls = check("add-on list", lambda: fetch(f"{U}/api/addons")[0]) or []
+    PHONE = ("mgf.", "lib.", "svc", "war.")      # these keep their main choice in the one dropdown phones show ("genre")
+    for url in urls:
+        if url.endswith(f"/{token}/manifest.json") or "/history/" in url:
+            continue
+        man = check(url.rsplit(f"/{token}/", 1)[-1], lambda url=url: fetch(url)[0])
+        if not man:
+            continue
+        cats = man.get("catalogs") or []
+        say("PASS" if len(json.dumps(man)) < 20_000 else "WARN", man.get("name", "?"), f"{len(cats)} catalogs, {len(json.dumps(man)) // 1000} KB")
+        base_url = url.rsplit("/", 1)[0]
+        for c in cats:
+            ex = c.get("extra") or []
+            if c["id"].startswith(PHONE) and not (ex and ex[0].get("name") == "genre" and ex[0].get("options")):
+                say("FAIL", f"   {c['name']}", "its main choice isn't in the 'genre' dropdown, so phones and TVs can't pick it")
+            opts = (ex[0].get("options") or []) if ex and ex[0].get("isRequired") else []
+            picks = [None] if not opts else list(dict.fromkeys([opts[0], opts[-1]]))
+            for v in picks:
+                path = f"{base_url}/catalog/{c['type']}/{c['id']}" + ("/" + ex[0]["name"] + "=" + urllib.parse.quote(v, safe="") if v else "") + ".json"
+                def one(path=path, c=c, v=v):
+                    d, dt, _ = fetch(path, timeout=90)
+                    n = len(d.get("metas") or [])
+                    say("PASS" if n and dt < 8 else "WARN", f"   {c['type']:<6} {c['name']}" + (f" = {v}" if v else ""), f"{n} titles, {dt:.1f}s")
+                check(f"{c['name']} {v or ''}", one)
+
     if args.quick:
         return finish()
 
-    # ── 5. importer ──────────────────────────────────────────────────────────
-    head("5. List importer (into a temporary list that's deleted afterwards)")
+    # ── 6. importer ──────────────────────────────────────────────────────────
+    head("6. List importer (into a temporary list that's deleted afterwards)")
     tmp = check("create temp list", lambda: fetch(f"{U}/api/lists", {"name": "Mycelium check (safe to delete)"})[0])
     lid = tmp and tmp.get("lid")
     sources = [
@@ -186,8 +213,8 @@ def main():
             say("PASS" if len(inlist) >= 10 else "WARN", "imported titles show up as a row", f"{len(inlist)} titles")
         check("delete temp list", lambda: fetch(f"{U}/api/lists/{lid}/delete", {}))
 
-    # ── 6. migration ─────────────────────────────────────────────────────────
-    head("6. Migration from the offline tool: titles, genres, languages, ratings")
+    # ── 7. migration ─────────────────────────────────────────────────────────
+    head("7. Migration from the offline tool: titles, genres, languages")
     if not os.path.exists(os.path.join(ROOT, "data", "mycelium_migration_progress.json")):
         say("PASS", "offline library not copied over yet, so there's nothing to compare",
             "that's fine: try Mycelium first; after copying, run this check again")
@@ -241,10 +268,6 @@ def main():
     if checked:
         say("PASS" if gmiss <= checked * 0.01 else "FAIL", f"genres carried over for {checked - gmiss:,} of {checked:,} titles")
         say("PASS" if lmiss <= checked * 0.01 else "FAIL", f"original language carried over for {checked - lmiss:,} of {checked:,} titles")
-    rated = {x["id"]: x for x in (check("ratings", lambda: fetch(f"{U}/api/export?list=rated&format=json")[0]) or [])}
-    rmiss = [r for r in ratings if (rated.get(r["id"]) or {}).get("stars") != max(1, min(5, round(r["stars"])))]
-    say("PASS" if not rmiss else "FAIL", f"ratings: {len(ratings) - len(rmiss)} of {len(ratings)} with the same stars",
-        "" if not rmiss else "e.g. " + ", ".join(r["id"] for r in rmiss[:5]))
     if missing_all:
         with open(os.path.join(ROOT, "data", "mycelium_missing.csv"), "w", encoding="utf-8") as f:
             f.write("list,imdb_id,title\n" + "\n".join(f'{k},{i},"{(n or "").replace(chr(34), "")}"' for k, i, n in missing_all))

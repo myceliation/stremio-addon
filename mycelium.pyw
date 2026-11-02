@@ -336,8 +336,8 @@ class App(tk.Tk):
                     if http(f"{base}/{token}/api/mg-fill", {}, timeout=60).get("done"):
                         break
                 http(f"{base}/{token}/api/mg-stats", {}, timeout=60)
-            except Exception:
-                pass
+            except Exception as e:
+                self._prep_note = f"Sorting your titles into microgenres didn't finish ({str(e)[:80]}); the Library-by-microgenre lists may be out of date. Run step 3 again later."
             try:
                 # the Library's "import" dropdown: one entry per batch the offline tool imported (data\import_batches.json)
                 bf = os.path.join(ROOT, "data", "import_batches.json")
@@ -401,7 +401,10 @@ class App(tk.Tk):
         lines += [f"{st[:1]}  {name}\n     {st[2:]}" for name, url, st in report]
         if removed:
             lines += ["", "Removed (no longer needed): " + ", ".join(n or "?" for n in removed)]
-        lines += ["", "Click into Stremio's window (or restart it) to see them."]
+        if getattr(self, "_prep_note", None):
+            lines += ["", "⚠ " + self._prep_note]
+            self._prep_note = None
+        lines += ["", "Click into Stremio's window (or restart it) to see them. On phones and TVs, close and reopen the app."]
         self.show_report("Add to Stremio — result", "\n".join(lines))
         self.after(1500, self.refresh)
 
@@ -546,7 +549,7 @@ class App(tk.Tk):
             return messagebox.showinfo("Check", "Do step 2 first.")
         full = messagebox.askyesnocancel("Check it works", "Yes: full stress test. A temporary copy with every option on: "
                                          "every row and dropdown option, every kind of import, Watch History, sharing and exports "
-                                         "(about 10 minutes; your own copy isn't touched).\n\nNo: quick check of your own copy (about 1 minute).")
+                                         "(about 10 minutes; your own copy isn't touched).\n\nNo: check of your own copy, every add-on and Discover list (a few minutes).")
         if full is None:
             return
         if full:

@@ -1,7 +1,7 @@
 /**
  * @name Mycelium
  * @description Library / Watched / shelf / list buttons on every title, a History tab in the side bar (your Stremio history, read locally, merged with your Watched list), and a multi-genre mixer in Discover. Works with the Mycelium add-on. Runs inside the official Stremio app via Mycelium's UI link, and in Stremio Enhanced, Stremio Community v5 (WebMods) and as a userscript on web.stremio.com.
- * @version 0.5.0
+ * @version 0.5.1
  * @author myceliation
  * @updateUrl https://raw.githubusercontent.com/myceliation/stremio-addon/main/enhanced/mycelium.plugin.js
  */
@@ -15,7 +15,7 @@
       { key: "mycelium_url", type: "input", label: "Mycelium install link (optional)",
         description: "Only needed if the add-on isn't installed in this Stremio profile. Paste the link from the Mycelium configure page.",
         defaultValue: "" },
-      { key: "mycelium_bar", type: "toggle", label: "Shelf and rating bar on title pages", defaultValue: true },
+      { key: "mycelium_bar", type: "toggle", label: "Shelf and list buttons on title pages", defaultValue: true },
       { key: "mycelium_mixer", type: "toggle", label: "Genre mixer button in Discover", defaultValue: true },
       { key: "mycelium_history", type: "toggle", label: "Watch history button in Library", defaultValue: true },
     ]);
@@ -102,7 +102,7 @@
   const SHELVES = [["library", "📚", "Library"], ["watched", "✔", "Watched"], ["loved", "❤", "Loved"], ["liked", "👍", "Liked"], ["waiting", "⏳", "Waiting"],
                    ["rewatch", "🔁", "Rewatch"], ["dropped", "✖", "Dropped"], ["ignore", "👎", "Ignore"], ["blacklist", "🚫", "Blacklist"]];
 
-  // ── 1. shelf + rating bar on title pages ─────────────────────────────────────
+  // ── 1. shelf and list bar on title pages ─────────────────────────────────────
   function route() {
     const m = location.hash.match(/^#\/detail\/(movie|series)\/(tt\d+)/);
     return m ? { type: m[1], id: m[2] } : null;
@@ -248,7 +248,7 @@
     const FILTERS = ["Finished & in progress", "Finished", "In progress", "Rewatched", "Everything I opened"];
     let type = "movie", f = FILTERS[0], src = "stremio";
     const W = { sort_by: "", genre: "", year: "" };          // My Watched list: the same sorts and filters as Discover
-    const WSORTS = ["Recently added", "Newest releases", "Oldest releases", "TMDB rating", "My rating", "A–Z", "Shuffle"];
+    const WSORTS = ["Recently added", "Newest releases", "Oldest releases", "TMDB rating", "A–Z", "Shuffle"];
     const WGENRES = ["Action", "Animation", "Comedy", "Crime", "Documentary", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Thriller", "War", "Western"];
     const WYEARS = ["2020s", "2010s", "2000s", "1990s", "1980s", "1970s", "1960s", "1950s", "1940s"];
     const wchips = (key, opts) => `<div class="myc-chips">${opts.map(o =>

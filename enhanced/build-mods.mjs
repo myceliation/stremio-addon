@@ -19,7 +19,7 @@ writeFileSync(here + "mycelium.user.js", `// ==UserScript==
 // @name         Mycelium for Stremio
 // @namespace    https://github.com/myceliation/stremio-addon
 // @version      ${version}
-// @description  Shelf/rating buttons, genre mixer and local watch history on web.stremio.com
+// @description  Shelf and list buttons, genre mixer and local watch history on web.stremio.com
 // @match        https://web.stremio.com/*
 // @grant        none
 // @run-at       document-idle

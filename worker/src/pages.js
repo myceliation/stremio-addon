@@ -64,6 +64,8 @@ table.res img{width:38px;border-radius:4px;display:block}.conf{font-size:.75rem;
 .listrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border)}.listrow:last-child{border-bottom:0}
 `;
 
+// a value written into a page's script: JSON, with "<" escaped so text can never close the <script> tag
+const js = v => JSON.stringify(v).replace(/</g, "\\u003c");
 const page = (title, body, script = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <link rel="icon" href="/logo.svg"><style>${BASE_CSS}</style></head><body>${body}
@@ -77,6 +79,13 @@ const $=id=>document.getElementById(id);
 const toast=m=>{const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2600)};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const api=(path,body)=>fetch("/"+token+"/api/"+path,body===undefined?{}:{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json());
+// Stremio's code login runs in your browser (Stremio's code service doesn't answer Cloudflare's servers, but it does answer browsers)
+async function codeLogin(show){let c={};try{c=await(await fetch("https://link.stremio.com/api/v2/create?type=Create")).json()}catch{}
+  const r=c.result||c;if(!r.code)throw new Error("Stremio didn't hand out a code. Try again in a minute.");
+  show(r.code,r.link||("https://link.stremio.com/"+r.code));const t0=Date.now();
+  while(Date.now()-t0<600e3){await new Promise(z=>setTimeout(z,3000));
+    try{const j=await(await fetch("https://link.stremio.com/api/v2/read?type=Read&code="+encodeURIComponent(r.code))).json();const x=j.result||{};const k=x.authKey||(x.auth||{}).key;if(k)return k}catch{}}
+  throw new Error("The code expired. Try again.")}
 `;
 
 
@@ -114,15 +123,18 @@ ${insideCard()}
 
 <div id="settings" class="hidden">
   <section class="card">
-    <h2>Install</h2>
-    <ol class="note" style="margin:6px 0 12px 18px;line-height:1.8">
-      <li>Click <b>Copy link</b>.</li>
-      <li>In Stremio open <b>Add-ons</b>, paste the link into the search box at the top, and press Enter.</li>
-      <li>Click <b>Install</b> on the Mycelium card that appears.</li>
-    </ol>
-    <div class="row"><button class="btn primary" id="copyUrl" type="button">Copy link</button>
-      <a class="btn" id="installWeb" target="_blank" rel="noopener">Install on web.stremio.com</a>
-      <a class="btn ghost" id="installApp">Open in Stremio app</a></div>
+    <h2 id="install">Install</h2>
+    <p class="note">Mycelium is one main add-on plus <b id="addonCount">its</b> Discover add-ons: every microgenre family, your Library by microgenre, wars from every side, and every streaming service and TV channel. <b>Install everything</b> puts all of them in your Stremio account at once, at the top, on every device. It asks you to approve a one-time Stremio code; that sign-in is used once and not kept.</p>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="installAll" type="button">Install everything in Stremio</button>
+      <span class="note" id="installAllNote"></span></div>
+    <div id="installCode" class="hidden" style="margin-top:12px"><div class="code" id="installCodeText"></div>
+      <div class="row"><a class="btn" id="installCodeLink" target="_blank" rel="noopener">Open link.stremio.com</a><span class="note">Approve it there; this page carries on by itself.</span></div></div>
+    <details style="margin-top:14px"><summary class="note">Or install them one at a time</summary>
+      <p class="note">In Stremio open <b>Add-ons</b>, paste a link into the search box at the top, press Enter and click <b>Install</b>. The main one first:</p>
+      <div class="row"><button class="btn" id="copyUrl" type="button">Copy the main link</button>
+        <a class="btn" id="installWeb" target="_blank" rel="noopener">Install on web.stremio.com</a>
+        <a class="btn ghost" id="installApp">Open in Stremio app</a></div>
+      <div id="addonLinks" style="display:grid;gap:6px;margin-top:10px"></div></details>
     <p class="note" style="margin-top:10px">Keep the link private: it's the key to your lists. Installed once, Stremio carries it to your other devices. If <i>Open in Stremio app</i> does nothing, that's a current Stremio bug; copy-paste always works.</p>
     <p class="note" style="margin-top:6px">The separate <a id="historyLink">Watch History</a> add-on is optional now: Stremio shows what you've watched by itself. Turn it on under Rows if you still want it.</p>
   </section>
@@ -166,9 +178,10 @@ ${insideCard()}
     <h2>Rows on your board</h2>
     <div class="grid" id="rows"></div>
     <div class="row" style="margin-top:14px">
-      <label class="chk"><input type="checkbox" id="hideWatched"> Keep watched titles out of Library and discovery rows</label>
+      <label class="chk"><input type="checkbox" id="hideWatched"> Keep watched titles out of the Library row and Home's discovery rows (Popular, For you, Hidden gems…). Microgenres, studios, channels and streaming services in Discover always show everything.</label>
       <label class="chk"><input type="checkbox" id="hideIgnored"> Hide Ignore and Blacklist titles everywhere</label>
       <label class="chk"><input type="checkbox" id="shelveButton"> Show a “🍄 Mycelium” entry on every title (add or shelve)</label>
+      <label class="chk"><input type="checkbox" id="autoUpdate"> Update Mycelium in Stremio by itself when there's a new version (needs your Stremio account connected, above; otherwise a 🍄 “Update Mycelium” tile appears in the Mycelium row)</label>
       <label class="chk"><input type="checkbox" id="serviceHome"> Home rows for the 6 biggest streaming services where you live (every service is always in Discover → 📺 Streaming services; rows also appear as separate entries in Discover's list)</label>
       <label class="chk"><input type="checkbox" id="serviceRows"> A Home row for every streaming service you picked (with hundreds of services this adds several "Mycelium · Services" add-ons)</label>
       <label class="chk"><input type="checkbox" id="mgLinks"> List each title's microgenres on its page, as links (Mycelium then supplies title pages, using Cinemeta's details)</label>
@@ -189,8 +202,8 @@ ${insideCard()}
   </section>
 
   <section class="card">
-    <h2>Microgenres</h2>
-    <p class="note">Pin a few as rows. Every title's page lists the microgenres it belongs to (tap one to browse it), and your saved lists get a Microgenre dropdown.</p>
+    <h2>Microgenres on your Home board</h2>
+    <p class="note">You don't need to pick anything here to get microgenres: all ${MG_COUNT().all.toLocaleString("en")} are already in Stremio's Discover, in the 🍄 Mycelium add-ons (one dropdown per family). Ticking one here also gives it its own row on your Home board. Up to 20, because Stremio loads every Home row each time you open it, and it refuses an add-on that gets too big. Every title's page also lists its microgenres as links.</p>
     <div class="row" style="margin-top:10px"><input type="text" class="mg-search" id="mgSearch" placeholder="Filter microgenres" style="max-width:300px;margin:0">
       <button class="btn ghost" id="mgNone" type="button">Clear</button></div>
     <div class="grid" id="mgs" style="max-height:420px;overflow:auto;margin-top:8px">${microgenres.map(m =>
@@ -199,7 +212,7 @@ ${insideCard()}
 
   <section class="card">
     <h2>Your own genres</h2>
-    <p class="note">Describe a genre: “slow japanese horror 1990s”, “best korean crime series”, “obscure swamp thrillers”. Each one appears in Discover under ✎ Your own genres, next to Cult, camp &amp; exploitation. The same mixer also runs on anything you type into Stremio's search.</p>
+    <p class="note">Describe a genre: “slow japanese horror 1990s”, “best korean crime series”, “obscure swamp thrillers”. Each one appears in Discover under ✎ Your own genres, at the top of the first Mycelium microgenre list. The same mixer also runs on anything you type into Stremio's search.</p>
     <div id="custom" style="display:grid;gap:8px;margin-top:10px"></div>
     <button class="btn ghost" id="addCustom" type="button" style="margin-top:10px">Add a genre</button>
   </section>
@@ -217,10 +230,10 @@ ${insideCard()}
 <p class="tmdb">Film and series data from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB. Not affiliated with Stremio.</p>
 </div>`;
   const script = `
-let token=${JSON.stringify(token)}||(()=>{try{return localStorage.getItem("mycelium_token")||""}catch{return""}})();
+let token=${js(token)}||(()=>{try{return localStorage.getItem("mycelium_token")||""}catch{return""}})();
 ${COMMON_JS}
-const ROWS=[["library","📚 Library"],["history","🕓 Watch history (needs connection)"],["loved","❤ Loved & liked (Stremio's Like and Love buttons count)"],["waiting","⏳ Waiting for release"],["rewatch","🔁 Rewatch"],["forYou","✨ For you (from your ratings, Loved and Watched)"],["popular","🔥 Popular this week"],["cinema","🎟 Only in cinemas"],["digital","📦 New on digital"],["gems","💎 Hidden gems"],["browse","🔎 All films / All series (Discover only: every filter and sort)"],["people","🎬 Director / actor search"],["tools","🍄 Mycelium tools row (import, settings)"],["historyAddon","🕓 The separate Watch History add-on (Stremio now shows what you've watched by itself; Mycelium keeps syncing it either way)"]];
-const SHELVES=${JSON.stringify(SHELF_OPTS.slice(0, 9))};
+const ROWS=[["library","📚 Library"],["history","🕓 Watch history (needs connection)"],["loved","❤ Loved & liked (Stremio's Like and Love buttons count)"],["waiting","⏳ Waiting for release"],["rewatch","🔁 Rewatch"],["forYou","✨ For you (from what you loved, liked and watched)"],["popular","🔥 Popular this week"],["cinema","🎟 Only in cinemas"],["digital","📦 New on digital"],["gems","💎 Hidden gems"],["browse","🔎 All films / All series (Discover only: every filter and sort)"],["people","🎬 Director / actor search"],["tools","🍄 Mycelium tools row (import, settings)"],["historyAddon","🕓 The separate Watch History add-on (Stremio now shows what you've watched by itself; Mycelium keeps syncing it either way)"]];
+const SHELVES=${js(SHELF_OPTS.slice(0, 9))};
 $("rows").innerHTML=ROWS.map(([k,l])=>'<label class="chk"><input type="checkbox" data-row="'+k+'">'+l+'</label>').join("");
 let state=null;
 function gotToken(t){token=t;try{localStorage.setItem("mycelium_token",t)}catch{}load()}
@@ -240,17 +253,22 @@ $("lists").addEventListener("change",async e=>{const r=e.target.closest(".listro
 $("lists").addEventListener("click",async e=>{if(e.target.dataset.del===undefined)return;const r=e.target.closest(".listrow");
   if(!confirm("Delete this list? The titles stay in your other lists."))return;await api("lists/"+r.dataset.lid+"/delete",{});load()});
 $("newList").onclick=async()=>{const name=$("newListName").value.trim();if(!name)return toast("Give it a name");await api("lists",{name});$("newListName").value="";load()};
-$("histConnect").onclick=async()=>{$("histConnect").disabled=true;const j=await api("history/start");
-  if(!j.code){toast("Stremio didn't return a code. Try again in a minute.");$("histConnect").disabled=false;return}
-  $("code").textContent=j.code;$("codeLink").href=j.link;$("histCode").classList.remove("hidden");const t0=Date.now();
-  (async function poll(){if(Date.now()-t0>600e3){$("histCode").classList.add("hidden");$("histConnect").disabled=false;return toast("Code expired")}
-    const r=await api("history/poll?code="+encodeURIComponent(j.code));if(r.connected){$("histCode").classList.add("hidden");showHist(true);warm();return}setTimeout(poll,3000)})()};
+$("histConnect").onclick=async()=>{$("histConnect").disabled=true;
+  try{const key=await codeLogin((code,link)=>{$("code").textContent=code;$("codeLink").href=link;$("histCode").classList.remove("hidden")});
+    $("histCode").classList.add("hidden");const r=await api("history/connect",{authKey:key});if(!r.connected)throw new Error(r.error||"Mycelium couldn't use that sign-in");showHist(true);warm()}
+  catch(e){$("histCode").classList.add("hidden");$("histConnect").disabled=false;toast(e.message)}};
 async function addonOrder(where){$("orderNote").textContent="Working…";let r=await api("addon-order",{where});
-  if(r.needCode){const j=await api("history/start");if(!j.code){$("orderNote").textContent="Stremio didn't return a code. Try again in a minute.";return}
-    $("orderCodeText").textContent=j.code;$("orderCodeLink").href=j.link;$("orderCode").classList.remove("hidden");const t0=Date.now();
-    while(Date.now()-t0<600e3){await new Promise(z=>setTimeout(z,3000));r=await api("addon-order",{where,code:j.code});if(!r.pending)break}
+  if(r.needCode){try{const key=await codeLogin((code,link)=>{$("orderCodeText").textContent=code;$("orderCodeLink").href=link;$("orderCode").classList.remove("hidden")});
+      r=await api("addon-order",{where,authKey:key})}catch(e){r={error:e.message}}
     $("orderCode").classList.add("hidden")}
   $("orderNote").textContent=r.ok?"Done: updated "+r.refreshed+" add-on"+(r.refreshed===1?"":"s")+(where==="keep"?"":". Order now: "+r.order.join(" → "))+". Click into Stremio (or restart it) to see it.":"Couldn't update: "+(r.error||"code expired")}
+$("installAll").onclick=async()=>{$("installAll").disabled=true;$("installAllNote").textContent="Working…";let r=await api("addon-order",{where:"top"});
+  if(r.needCode){try{const key=await codeLogin((code,link)=>{$("installCodeText").textContent=code;$("installCodeLink").href=link;$("installCode").classList.remove("hidden")});
+      r=await api("addon-order",{where:"top",authKey:key})}catch(e){r={error:e.message}}$("installCode").classList.add("hidden")}
+  $("installAllNote").textContent=r.ok?"Done: "+r.refreshed+" add-ons installed at the top. Restart Stremio (on phones and TVs, close and reopen the app) to see them.":"Couldn't install: "+(r.error||"code expired");$("installAll").disabled=false};
+async function addonLinks(){try{const urls=await api("addons");$("addonCount").textContent=(urls.length-1)+"";
+  $("addonLinks").innerHTML=urls.map((u,i)=>'<div class="row"><code class="note" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(u.split("/").slice(4).join("/"))+'</code><button class="btn ghost" type="button" data-u="'+esc(u)+'">Copy</button></div>').join("");
+  $("addonLinks").onclick=e=>{const u=e.target.dataset.u;if(u){navigator.clipboard.writeText(u);toast("Link copied")}}}catch{}}
 $("orderKeep").onclick=()=>addonOrder("keep");$("orderTop").onclick=()=>addonOrder("top");$("orderCine").onclick=()=>addonOrder("after-cinemeta");
 $("histDisconnect").onclick=async()=>{await api("history/disconnect",{});showHist(false);toast("Disconnected; history copy deleted")};
 function showHist(on){$("histOff").classList.toggle("hidden",on);$("histOn").classList.toggle("hidden",!on);$("histConnect").disabled=false}
@@ -301,30 +319,31 @@ $("provAll").onclick=()=>{document.querySelectorAll("#providers input").forEach(
 $("provNone").onclick=()=>{chosenProv.clear();drawProv()};
 window._unusedMgAll=()=>document.querySelectorAll("#mgs label:not(.hidden) input").forEach(c=>c.checked=true);
 $("mgNone").onclick=()=>document.querySelectorAll("#mgs input").forEach(c=>c.checked=false);
+$("mgs").onchange=e=>{if(e.target.checked&&document.querySelectorAll("#mgs input:checked").length>20){e.target.checked=false;toast("Up to 20 Home rows. All of them are in Discover already.")}};
 $("mgSearch").oninput=e=>{const q=e.target.value.toLowerCase();document.querySelectorAll("#mgs label").forEach(l=>l.classList.toggle("hidden",!!q&&!l.dataset.name.includes(q)))};
 async function load(quiet){
   const r=await fetch("/"+token+"/api/settings");if(!r.ok){try{localStorage.removeItem("mycelium_token")}catch{};token="";return}
   state=await r.json();const s=state.settings;
   $("signin").classList.add("hidden");$("settings").classList.remove("hidden");
-  installButtons(state.install,"installApp","installWeb","copyUrl");$("historyLink").href="/"+token+"/history";
+  installButtons(state.install,"installApp","installWeb","copyUrl");addonLinks();$("historyLink").href="/"+token+"/history";
   $("importLink").href="/"+token+"/import";$("shareLink").href=state.share;$("copyShare").onclick=()=>{navigator.clipboard.writeText(state.share);toast("Share link copied")};
   renderLists();showHist(!!state.historyConnected);
   if(quiet)return;
   document.querySelectorAll("[data-row]").forEach(c=>c.checked=!!s.rows[c.dataset.row]);
-  initServices(s);["hideIgnored","hideWatched","shelveButton"].forEach(k=>$(k).checked=!!s[k]);$("mgLinks").checked=s.mgLinks!==false;$("serviceRows").checked=!!s.serviceRows;$("serviceHome").checked=!!s.serviceHome;$("displayName").value=s.displayName||"";
+  initServices(s);["hideIgnored","hideWatched","shelveButton"].forEach(k=>$(k).checked=!!s[k]);$("autoUpdate").checked=s.autoUpdate!==false;$("mgLinks").checked=s.mgLinks!==false;$("serviceRows").checked=!!s.serviceRows;$("serviceHome").checked=!!s.serviceHome;$("displayName").value=s.displayName||"";
   document.querySelectorAll("#mgs input").forEach(c=>c.checked=s.microgenres.includes(c.value));
   $("custom").innerHTML="";(s.custom||[]).forEach(customRow);
   if(state.historyConnected)warm();
 }
 $("save").onclick=async()=>{
   const regs=[...document.querySelectorAll("#regionsGrid input:checked")].map(c=>c.value);const home=$("homeRegion").value;
-  const s={regions:[home,...regs.filter(r=>r!==home)].filter(Boolean),hideIgnored:$("hideIgnored").checked,hideWatched:$("hideWatched").checked,shelveButton:$("shelveButton").checked,mgLinks:$("mgLinks").checked,serviceRows:$("serviceRows").checked,serviceHome:$("serviceHome").checked,displayName:$("displayName").value,
+  const s={regions:[home,...regs.filter(r=>r!==home)].filter(Boolean),hideIgnored:$("hideIgnored").checked,autoUpdate:$("autoUpdate").checked,hideWatched:$("hideWatched").checked,shelveButton:$("shelveButton").checked,mgLinks:$("mgLinks").checked,serviceRows:$("serviceRows").checked,serviceHome:$("serviceHome").checked,displayName:$("displayName").value,
     rows:Object.fromEntries([...document.querySelectorAll("[data-row]")].map(c=>[c.dataset.row,c.checked])),
     providers:[...chosenProv.values()],
     microgenres:[...document.querySelectorAll("#mgs input:checked")].map(c=>c.value),
     custom:[...document.querySelectorAll("#custom .row")].map(d=>({id:d.dataset.id,name:d.querySelector('[data-f=name]').value,query:d.querySelector('[data-f=query]').value,type:d.querySelector('[data-f=type]').value}))};
   const j=await api("settings",s);toast(j.settings?"Saved. Click “Update Mycelium in Stremio” to see the changes in Stremio":"Couldn't save")};
-$("wipe").onclick=async()=>{if(!confirm("Delete all your Mycelium lists, ratings and settings? Your Stremio account is not touched."))return;
+$("wipe").onclick=async()=>{if(!confirm("Delete all your Mycelium lists, shelves and settings? Your Stremio account is not touched."))return;
   await api("delete",{});try{localStorage.removeItem("mycelium_token")}catch{};location.href="/configure"};
 $("signout").onclick=()=>{try{localStorage.removeItem("mycelium_token")}catch{};location.href="/configure"};
 if(token)load();
@@ -341,7 +360,7 @@ export function importPage({ origin, token }) {
   <div data-p="paste"><textarea id="text" rows="10" placeholder="Paste anything: a list page, titles one per line, IMDb or Letterboxd links…"></textarea><p class="note" id="pasteCount"></p></div>
   <div data-p="url" class="hidden"><input type="text" id="url" placeholder="https://letterboxd.com/…/list/…   ·   https://en.wikipedia.org/wiki/Category:…   ·   https://www.themoviedb.org/list/…">
     <p class="note" style="margin-top:6px">Letterboxd lists, watchlists and /films/ pages; TMDB lists, collections, keywords, people and companies; Wikipedia list articles and categories; most other pages that mention films. IMDb usually blocks servers, so paste IMDb pages instead.</p></div>
-  <div data-p="csv" class="hidden"><input type="file" id="csv" accept=".csv,text/csv"><p class="note" style="margin-top:6px">IMDb exports (list, watchlist, ratings) and Letterboxd exports (watched, watchlist, ratings, diary). Ratings in the file are kept as your star ratings.</p></div>
+  <div data-p="csv" class="hidden"><input type="file" id="csv" accept=".csv,text/csv"><p class="note" style="margin-top:6px">IMDb exports (list, watchlist, ratings) and Letterboxd exports (watched, watchlist, ratings, diary). Star ratings in the file aren't used: Mycelium follows Stremio's Like and Love instead.</p></div>
   <div class="row" style="margin-top:14px">
     <label for="target">Add to</label><select id="target" style="width:auto"></select>
     <input type="text" id="newName" placeholder="Name for the new list" class="hidden" style="max-width:260px">
@@ -360,7 +379,7 @@ export function importPage({ origin, token }) {
 <p class="note"><a id="backLink" href="/${token}/configure">← Back to settings</a></p>
 </div>`;
   const script = `
-const token=${JSON.stringify(token)};
+const token=${js(token)};
 ${COMMON_JS}
 ${extractCandidates.toString()}
 ${parseCsv.toString()}
@@ -374,7 +393,7 @@ if(QS.get("url")){document.querySelector('#tabs [data-t="url"]').click();$("url"
 if(QS.get("brand")==="history"){document.title="Import watched titles · Watch History";document.querySelector("h1").innerHTML='<img src="/history.svg" alt="">Import what you&#39;ve watched';
   document.querySelector("p.lead").textContent="Paste a Letterboxd diary or /films/ page, an IMDb ratings page, or upload a Letterboxd or IMDb CSV. Everything you keep goes into Watched.";}
 (async()=>{const s=await api("settings");const want=QS.get("target");
-  $("target").innerHTML=${JSON.stringify(SHELF_OPTS)}.map(([k,l])=>'<option value="'+k+'">'+esc(l)+'</option>').join("")
+  $("target").innerHTML=${js(SHELF_OPTS)}.map(([k,l])=>'<option value="'+k+'">'+esc(l)+'</option>').join("")
    +(s.lists||[]).map(l=>'<option value="l:'+l.lid+'">📋 '+esc(l.name)+'</option>').join("")+'<option value="new">＋ New list…</option>';
   if(want)$("target").value=want})();
 $("target").onchange=()=>$("newName").classList.toggle("hidden",$("target").value!=="new");
@@ -439,7 +458,7 @@ export function actPage({ origin, token, type, id, meta, state, shelves, lists }
   </div></section>
   <p class="note">Changes save instantly. Close this tab to go back to Stremio.</p></div>`;
   const script = `
-const T=${JSON.stringify(token)},ID=${JSON.stringify(id)},TY=${JSON.stringify(type)};
+const T=${js(token)},ID=${js(id)},TY=${js(type)};
 const post=(p,b)=>fetch("/"+T+"/api/"+p,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(b)}).then(r=>r.json());
 function paint(st){document.querySelectorAll("#lists button").forEach(b=>{const on=st.lists.includes(b.dataset.k);b.className="btn "+(on?"primary":"ghost");b.setAttribute("aria-pressed",on)});}
 document.getElementById("lists").onclick=async e=>{const b=e.target.closest("button");if(!b)return;
@@ -470,7 +489,7 @@ export function sharePage({ origin, share, who, watched, loved }) {
 export function historySetupPage({ origin, token = "" }) {
   const body = `<div class="wrap" style="max-width:760px">
 <h1><img src="/history.svg" alt="">Watch History</h1>
-<p class="lead">Everything you've watched, as rows in Stremio that you can filter by genre, decade, language or your rating. It merges your Stremio history with anything you mark or import as watched. No sign-in.</p>
+<p class="lead">Everything you've watched, as rows in Stremio that you can filter by genre, decade or language. It merges your Stremio history with anything you mark or import as watched. No sign-in.</p>
 
 <section class="card" id="hsStart">
   <h2>Get started</h2>
@@ -498,16 +517,15 @@ export function historySetupPage({ origin, token = "" }) {
 </div>
 </div>`;
   const script = `
-let token=${JSON.stringify(token)}||(()=>{try{return localStorage.getItem("mycelium_token")||""}catch{return""}})();
+let token=${js(token)}||(()=>{try{return localStorage.getItem("mycelium_token")||""}catch{return""}})();
 ${COMMON_JS}
 function gotToken(t){token=t;try{localStorage.setItem("mycelium_token",t)}catch{}load()}
 $("newBtn").onclick=async()=>{$("newBtn").disabled=true;const j=await(await fetch("/api/new",{method:"POST"})).json();if(j.token)gotToken(j.token);else{toast(j.error||"Couldn't create it");$("newBtn").disabled=false}};
 function showHist(on){$("histOff").classList.toggle("hidden",on);$("histOn").classList.toggle("hidden",!on);$("histConnect").disabled=false}
-$("histConnect").onclick=async()=>{$("histConnect").disabled=true;const j=await api("history/start");
-  if(!j.code){toast("Stremio didn't return a code. Try again in a minute.");$("histConnect").disabled=false;return}
-  $("code").textContent=j.code;$("codeLink").href=j.link;$("histCode").classList.remove("hidden");const t0=Date.now();
-  (async function poll(){if(Date.now()-t0>600e3){$("histCode").classList.add("hidden");$("histConnect").disabled=false;return toast("Code expired")}
-    const r=await api("history/poll?code="+encodeURIComponent(j.code));if(r.connected){$("histCode").classList.add("hidden");showHist(true);warm();return}setTimeout(poll,3000)})()};
+$("histConnect").onclick=async()=>{$("histConnect").disabled=true;
+  try{const key=await codeLogin((code,link)=>{$("code").textContent=code;$("codeLink").href=link;$("histCode").classList.remove("hidden")});
+    $("histCode").classList.add("hidden");const r=await api("history/connect",{authKey:key});if(!r.connected)throw new Error(r.error||"Mycelium couldn't use that sign-in");showHist(true);warm()}
+  catch(e){$("histCode").classList.add("hidden");$("histConnect").disabled=false;toast(e.message)}};
 $("histDisconnect").onclick=async()=>{await api("history/disconnect",{});showHist(false);toast("Disconnected")};
 async function warm(){for(let i=0;i<30;i++){const j=await api("warm");if(j.error){$("histNote").textContent="Couldn't read your Stremio library: "+j.error;return}
   $("histNote").textContent=j.complete?"Connected. Your finished titles are in Watched.":"Reading your Stremio library… "+(j.titles||0).toLocaleString();if(j.complete)return load(true)}}

@@ -37,6 +37,18 @@ if (toml.includes("REPLACE_WITH_D1_ID")) {
 console.log("Applying database schema…");
 console.log(capture(["d1", "migrations", "apply", "mycelium", "--remote"], "y\n"));
 
+// 2b. whole studio and channel catalogues (catalogues.sql): loaded again only when the file changed
+{
+  const { createHash } = await import("crypto");
+  const sum = createHash("sha1").update(readFileSync("catalogues.sql")).digest("hex");
+  const mark = ".catalogues-loaded";
+  if (!existsSync(mark) || readFileSync(mark, "utf8").trim() !== sum) {
+    console.log("Loading the studio and channel catalogues (a minute or two)…");
+    const r = run(["d1", "execute", "mycelium", "--remote", "--file=catalogues.sql", "--yes"]);
+    if (r.status === 0) writeFileSync(mark, sum); else console.log("The catalogues didn't load; the rows still work from TMDB. Run step 1 again later.");
+  }
+}
+
 // 3. bundle the in-app plugin, then deploy the code
 execSync("node scripts/build-ui.mjs", { stdio: "inherit" });
 execSync("node scripts/stamp.mjs", { stdio: "inherit" });    // after the plugin is bundled into src/

@@ -1,7 +1,8 @@
-import { json, html, CORS, parseExtra, cacheGet, cachePut, ALS, countingDB, used, spend } from "./util.js";
+import { json, html, CORS, parseExtra, cacheGet, cachePut, ALS, countingDB, used, spend, room } from "./util.js";
 import { buildManifest, historyManifest, publicManifest, RATING_FILTERS, listFilters, ADDON_ID, HISTORY_ID, servicePacks, packManifest, VERSION, allServicesManifest, microgenresManifest, sidesManifest, mgPartPath, mgPartCount, libraryManifest, libPartCount, LIB_ALL, fromPhones } from "./manifest.js";
 import { sidesSpec } from "./sides.js";
 import { BUILD } from "./build.js";
+import { CAT_ROWS } from "./catrows.js";
 import { BUILDERS, genreId, COUNTRIES_BY_NAME, WIDE_COUNTRIES } from "./catalogs.js";
 import { ITEM_META } from "./itemmeta.js";
 import { syncAwards, awardItems } from "./awardsync.js";
@@ -17,10 +18,14 @@ import { MICROGENRES, MG_BY_ID, matchMicrogenres, mgString, mgCurrent, familyOf,
 import UI_PLUGIN from "./uiplugin.js";
 
 export default {
-  // hourly (wrangler.toml [triggers]): keeps the festival and award rows current
+  // hourly (wrangler.toml [triggers]): even hours keep the festival and award rows current; odd hours put a new version
+  // of Mycelium's add-ons into the Stremio accounts of everyone who connected theirs (Stremio keeps the copy it installed)
   async scheduled(event, env, ctx) {
     ctx.waitUntil(ALS.run({ used: 0 }, async () => {
-      try { console.log("awards", JSON.stringify(await syncAwards({ ...env, DB: countingDB(env.DB) }))); } catch (e) { console.error("awards", e && e.stack || e); }
+      const e2 = { ...env, DB: countingDB(env.DB) };
+      const odd = new Date(event.scheduledTime || Date.now()).getUTCHours() % 2;
+      try { console.log(odd ? "updates" : "awards", JSON.stringify(odd ? await autoUpdate(e2) : await syncAwards(e2))); }
+      catch (e) { console.error(odd ? "updates" : "awards", e && e.stack || e); }
     }));
   },
   async fetch(req, env, ctx) {
@@ -103,6 +108,9 @@ async function route(req, env, ctx, url, origin, p) {
 
   if (p[1] === "manifest.json") {
     await ensureHomeServices(env, user).catch(() => {});
+    if (user.settings.origin !== origin || user.settings.servedBuild !== BUILD) {
+      user.settings.origin = origin; user.settings.servedBuild = BUILD; await S.saveSettings(env, user).catch(() => {});
+    }
     return json(buildManifest(user, origin, await S.getLists(env, user.uid)), 200, { "cache-control": "max-age=60" });
   }
 
@@ -184,6 +192,8 @@ async function route(req, env, ctx, url, origin, p) {
     try {
       const ms = await microgenresOf(env, type, id, meta);
       const manifestUrl = encodeURIComponent(`${origin}/${T}/manifest.json`);
+      // phones and TVs don't show link groups other than Stremio's own, so the microgenres also go at the end of the description
+      if (ms.length) meta.description = `${meta.description || ""}\n\n🍄 ${ms.slice(0, 14).map(m => m.name.replace(/:.*$/, "")).join(" · ")}`.trim();
       meta.links = [...(meta.links || []), ...ms.slice(0, 14).map(m => ({ name: m.name.replace(/:.*$/, ""), category: "Microgenres",
         url: `stremio:///discover/${encodeURIComponent(`${origin}/${T}/${mgPartPath(m.type, familyOf(m))}/${m.type}/manifest.json`)}/${m.type}/mgf.${familyOf(m)}?genre=${encodeURIComponent(m.name)}` }))];
     } catch { /* the page without microgenres */ }
@@ -218,7 +228,8 @@ async function route(req, env, ctx, url, origin, p) {
   }
 
   if (p[1] === "act") {
-    const type = p[2], id = p[3];
+    const type = p[2] === "series" ? "series" : "movie", id = p[3];
+    if (!/^tt\d+$/.test(id || "")) return json({ error: "bad id" }, 400);
     const meta = await S.ensureTitle(env, type, id);
     const st = (await S.membership(env, user.uid, [id]))[id];
     return html(actPage({ origin, token: T, type, id, meta, state: st, shelves: S.SHELVES, lists: await S.getLists(env, user.uid) }));
@@ -256,7 +267,8 @@ async function api(req, env, ctx, url, origin, user, p) {
   }
   if (p[0] === "settings") {
     if (req.method === "POST") {
-      user.settings = { ...sanitizeSettings(b), mgTop: user.settings.mgTop, mgAll: user.settings.mgAll, histV: user.settings.histV, batches: user.settings.batches };
+      const keep = ["mgTop", "mgAll", "histV", "batches", "origin", "servedBuild", "autoBuild", "homeServices", "homeServicesFor"];
+      user.settings = { ...sanitizeSettings(b), ...Object.fromEntries(keep.map(k => [k, user.settings[k]])) };
       await S.saveSettings(env, user);
       await ensureHomeServices(env, user).catch(() => {});
     }
@@ -304,6 +316,7 @@ async function api(req, env, ctx, url, origin, user, p) {
     if (p[1] === "start" && req.method === "POST") {
       if (!S.isListKey(b.target) && b.target !== "rated") return json({ error: "Pick where the titles should go." }, 400);
       if (!b.url && !(b.rows || []).length) return json({ error: "Nothing to import: paste a list, a link or a CSV." }, 400);
+      if (b.url && !/^https?:\/\/[^\s/]+\.[^\s/]+/i.test(String(b.url))) return json({ error: "That isn't a web link (it should start with https://)." }, 400);
       const id = await I.startJob(env, user.uid, { source: b.source || (b.url ? "url" : "paste"), target: b.target, rows: (b.rows || []).slice(0, 6000), url: b.url,
         wlang: /^[a-z]{2,3}$/.test(b.wlang || "") ? b.wlang : null, maxRows: +b.maxRows || 0 });
       return json({ job: id });
@@ -355,20 +368,18 @@ async function api(req, env, ctx, url, origin, user, p) {
   // uses the stored key when history is connected, otherwise a one-time code login whose key is not kept
   if (p[0] === "addon-order" && req.method === "POST") {
     let key = null;
-    if (b.code) { key = await linkRead(String(b.code)); if (!key) return json({ pending: true }); }
+    if (/^[A-Za-z0-9+/=_-]{20,200}$/.test(b.authKey || "")) key = b.authKey;        // from the page's own code login; used once, not kept
+    else if (b.code) { key = await linkRead(String(b.code)); if (!key) return json({ pending: true }); }
     else if (user.auth_enc) key = await S.authKeyOf(env, user);
     else return json({ needCode: true });
-    const lists = await S.getLists(env, user.uid);
     await ensureHomeServices(env, user).catch(() => {});
-    const fresh = { [`${origin}/${T}/manifest.json`]: buildManifest(user, origin, lists),
-                    [`${origin}/${T}/history/manifest.json`]: historyManifest(user, origin) };
-    for (const t of ["movie", "series"]) for (let i = 1; i <= libPartCount(user, t); i++) fresh[`${origin}/${T}/library${i > 1 ? i : ""}/${t}/manifest.json`] = libraryManifest(user, origin, t, i);
-    for (const t of ["movie", "series"]) for (let i = 1; i <= mgPartCount(t); i++) fresh[`${origin}/${T}/microgenres${i > 1 ? i : ""}/${t}/manifest.json`] = microgenresManifest(user, origin, t, i);
-    for (const t of ["movie", "series"]) fresh[`${origin}/${T}/sides/${t}/manifest.json`] = sidesManifest(user, origin, t);
-    for (const t of ["movie", "series"]) fresh[`${origin}/${T}/allservices/${t}/manifest.json`] = allServicesManifest(user, origin, t);
-    servicePacks(user, origin, lists).forEach((_, i) => { fresh[`${origin}/${T}/services/${i + 1}/manifest.json`] = packManifest(user, origin, lists, i + 1); });
+    const fresh = await freshAddons(env, user, origin);
     const where = ["after-cinemeta", "keep"].includes(b.where) ? b.where : "top";
-    try { return json(await reorderAddons(key, where, [ADDON_ID, HISTORY_ID], fresh)); }
+    try {
+      const r = await reorderAddons(key, where, [ADDON_ID, HISTORY_ID], fresh);
+      if (r.ok) { user.settings.servedBuild = user.settings.autoBuild = BUILD; await S.saveSettings(env, user).catch(() => {}); }
+      return json(r);
+    }
     catch (e) { return json({ ok: false, error: String(e.message || e) }); }
   }
 
@@ -446,6 +457,7 @@ function sanitizeSettings(s) {
   })).filter(c => c.query);
   out.rows = Object.fromEntries(Object.keys(S.DEFAULT_SETTINGS.rows).map(k => [k, !!(s.rows || {})[k]]));
   for (const k of ["hideIgnored", "hideWatched", "shelveButton"]) out[k] = !!s[k];
+  out.autoUpdate = s.autoUpdate !== false;
   return out;
 }
 
@@ -476,7 +488,8 @@ async function catalog(env, user, type, id, extra) {
   if (id === "rated") return [];            // star ratings are gone (Stremio's Like / Love replace them); old installs see an empty row
   if (id === "director" || id === "actor") return people(env, id, extra.search, skip);
   // the 🍄 Mycelium row: import, settings, your lists, then one tile per microgenre family (opens it in Discover)
-  if (id === "tools") return skip ? [] : [...["import", "settings", "lists"].map(k => "myc:tool:" + k), ...FAMILIES.map(([f]) => "myc:fam:" + f)]
+  if (id === "tools") return skip ? [] : [...(user.settings.servedBuild && user.settings.servedBuild !== BUILD ? ["myc:tool:update"] : []),
+    ...["import", "settings", "lists"].map(k => "myc:tool:" + k), ...FAMILIES.map(([f]) => "myc:fam:" + f)]
     .map(k => tileMeta(env.ORIGIN, user, k)).filter(Boolean);
   if (id === "import") {
     const m = (extra.search || "").match(/https?:\/\/\S+/);
@@ -489,6 +502,11 @@ async function catalog(env, user, type, id, extra) {
   const dot = id.indexOf(".");
   const [kind, arg] = dot > 0 ? [id.slice(0, dot), id.slice(dot + 1)] : [id, null];
   let spec = null;
+  // whole catalogues and canons (a studio, a channel, a festival's winners, someone's favourites, a decade's hits) show
+  // everything, watched or not; discovery rows still leave out what you've seen
+  // Discover's lists (microgenres, studios, channels, streaming services, wars) are complete: they show everything,
+  // watched or not. "Keep watched titles out" only applies to the Library row and Home's discovery rows.
+  let canon = ["svc", "prov", "war", "prej", "mgf", "mg"].includes(kind);
   if (kind === "popular") spec = BUILDERS.popular(type, extra, c);
   else if (kind === "cinema") spec = await BUILDERS.cinema(type, extra, c);
   else if (kind === "digital") spec = BUILDERS.digital(type, extra, c);
@@ -503,7 +521,12 @@ async function catalog(env, user, type, id, extra) {
   }
   else if (kind === "mgf") {                     // a family hub: the microgenre comes from its dropdown
     const m = arg === "mine" ? null : MICROGENRES.find(x => x.name === extra.microgenre && x.type === type);
-    if (m) spec = BUILDERS.microgenre(type, extra, c, m.id);
+    if (m) { spec = BUILDERS.microgenre(type, extra, c, m.id); canon = true; }
+    // a studio's or channel's whole catalogue, from Wikipedia's lists and Wikidata, before TMDB's own credits
+    if (m && spec && CAT_ROWS.has(m.id + "|" + type)) {
+      const cat = await S.catalogueItems(env, m.id + "|" + type);
+      if (cat.length) { const have = new Set((spec.static || []).map(x => x.id)); spec = { ...spec, static: [...(spec.static || []), ...cat.filter(x => !have.has(x.id))] }; }
+    }
     // festival and award rows: this year's winners and nominees (added by the hourly job) before the starting list
     if (m && spec && AWARD_IDS.has(m.id)) {
       const live = await awardItems(env, m.id).catch(() => []);
@@ -515,7 +538,7 @@ async function catalog(env, user, type, id, extra) {
       if (cu) spec = await BUILDERS.mixer(type, { ...extra, microgenre: undefined, search: cu.query }, c);
     }
   }
-  else if (kind === "mg") spec = BUILDERS.microgenre(type, extra, c, arg);
+  else if (kind === "mg") { spec = BUILDERS.microgenre(type, extra, c, arg); canon = true; }
   else if (kind === "war" || kind === "prej") spec = sidesSpec(type, id, extra);
   else if (kind === "mix") spec = await BUILDERS.mixer(type, { ...extra, fromSearch: true }, c);
   else if (kind === "custom") {
@@ -531,7 +554,7 @@ async function catalog(env, user, type, id, extra) {
     const gid = extra.genre ? String(genreId(type, extra.genre) || "") : "";
     const cc = extra.country ? String(COUNTRIES_BY_NAME[extra.country] || WIDE_COUNTRIES[extra.country] || "").split("|") : [];
     spec.static = spec.static.filter(x => {
-      const [c = "", g = ""] = ITEM_META[x.id] || [];
+      const [c = "", g = ""] = x.meta || ITEM_META[x.id] || [];
       if (y && !(dec ? String(x.year || "").startsWith(y.slice(0, 3)) : String(x.year) === y)) return false;
       if (gid && !g.split("|").includes(gid)) return false;
       if (cc.length && cc[0] && !c.split("|").some(v => cc.includes(v))) return false;
@@ -549,12 +572,13 @@ async function catalog(env, user, type, id, extra) {
       poster: x.poster || `https://images.metahub.space/poster/small/${x.id}/img`, releaseInfo: x.year || undefined }));
     if (!spec.path || picked.length >= 20) return picked;
     // after the hand-picked titles, the rest of TMDB's matches (on the same page when only a few were picked)
-    const sopts = { budget, exclude: await S.excludedIds(env, user), alsoSkip: spec.static.map(x => x.id) };
+    const sopts = { budget, exclude: canon ? excl : await S.excludedIds(env, user), alsoSkip: spec.static.map(x => x.id) };
     let sp = spec.params;
     for (const alt of spec.fallbacks || []) { if ((await pagedCatalog(env, type, spec.path, sp, 0, sopts)).length) break; sp = alt; }
     return [...picked, ...(await pagedCatalog(env, type, spec.path, sp, Math.max(0, skip - st.length), sopts)).map(toMeta)];
   }
-  const opts = { budget, keep: spec.keep, exclude: kind === "rec" ? await S.savedIds(env, user.uid) : await S.excludedIds(env, user) };
+  const opts = { budget, keep: spec.keep, exclude: kind === "rec" ? await S.savedIds(env, user.uid)
+    : await S.excludedIds(env, canon ? { ...user, settings: { ...user.settings, hideWatched: false } } : user) };
   let params = spec.params;
   for (const alt of spec.fallbacks || []) {
     if ((await pagedCatalog(env, type, spec.path, params, 0, opts)).length) break;
@@ -622,6 +646,8 @@ function tile(origin, T, user, id) {
   const base = `${origin}/${T}`;
   if (id === "myc:tool:import") return { name: "Import a list", poster: `${origin}/tile/import.svg`, action: "Open the list importer",
     url: `${base}/import`, description: "Paste a Letterboxd, IMDb, TMDB or Wikipedia list (or any page that mentions films) and add it to your Library, Watched, a shelf or one of your lists.\n\nTip: paste a list link straight into Stremio's search and an import tile appears." };
+  if (id === "myc:tool:update") return { name: "Update Mycelium", poster: `${origin}/tile/settings.svg`, action: "Open the update button",
+    url: `${base}/configure#install`, description: "Mycelium has new lists, rows or dropdowns since Stremio installed it. Stremio keeps the copy it installed, so open settings and press Install everything (one Stremio code).\n\nConnect your Stremio account there and future updates arrive by themselves." };
   if (id === "myc:tool:settings") return { name: "Settings", poster: `${origin}/tile/settings.svg`, action: "Open Mycelium settings",
     url: `${base}/configure`, description: "Rows, streaming services and regions, Stremio account, sharing what you loved and watched." };
   if (id === "myc:tool:lists") return { name: "Your lists", poster: `${origin}/tile/lists.svg`, action: "Open your named lists",
@@ -706,6 +732,39 @@ async function microgenresOf(env, type, id, meta = null) {
     else await S.setTitleMg(env, id, type, mg);
   }
   return mg.split("|").slice(1).filter(Boolean).map(x => MG_BY_ID[x]).filter(Boolean);
+}
+
+// ── every add-on of one copy, freshly built (step 3, Install everything, and the automatic updates all install this) ──
+async function freshAddons(env, user, origin) {
+  const T = user.token, lists = await S.getLists(env, user.uid);
+  const fresh = { [`${origin}/${T}/manifest.json`]: buildManifest(user, origin, lists),
+                  ...(user.settings.rows.historyAddon ? { [`${origin}/${T}/history/manifest.json`]: historyManifest(user, origin) } : {}) };
+  if (user.settings.rows.library) for (const t of ["movie", "series"]) for (let i = 1; i <= libPartCount(user, t); i++) fresh[`${origin}/${T}/library${i > 1 ? i : ""}/${t}/manifest.json`] = libraryManifest(user, origin, t, i);
+  for (const t of ["movie", "series"]) for (let i = 1; i <= mgPartCount(t); i++) fresh[`${origin}/${T}/microgenres${i > 1 ? i : ""}/${t}/manifest.json`] = microgenresManifest(user, origin, t, i);
+  for (const t of ["movie", "series"]) fresh[`${origin}/${T}/sides/${t}/manifest.json`] = sidesManifest(user, origin, t);
+  for (const t of ["movie", "series"]) fresh[`${origin}/${T}/allservices/${t}/manifest.json`] = allServicesManifest(user, origin, t);
+  servicePacks(user, origin, lists).forEach((_, i) => { fresh[`${origin}/${T}/services/${i + 1}/manifest.json`] = packManifest(user, origin, lists, i + 1); });
+  return fresh;
+}
+
+// ── automatic updates: a new version of the add-ons goes into the Stremio account of everyone who connected theirs,
+// a few accounts per run (each takes about six of the run's 50 requests). Only where Mycelium is still installed.
+async function autoUpdate(env) {
+  const rows = (await env.DB.prepare("SELECT * FROM users WHERE auth_enc IS NOT NULL").all()).results || [];
+  let updated = 0, skipped = 0, failed = 0, waiting = 0;
+  for (const row of rows) {
+    const user = S.rowToUser(row);
+    if (user.settings.autoUpdate === false || user.settings.autoBuild === BUILD || !user.settings.origin) continue;
+    if (!room(8)) { waiting++; continue; }
+    try {
+      const key = await S.authKeyOf(env, user);
+      const r = await reorderAddons(key, "keep", [ADDON_ID, HISTORY_ID], await freshAddons(env, user, user.settings.origin), { onlyIfInstalled: true });
+      if (r.ok) { updated++; user.settings.servedBuild = BUILD; } else skipped++;
+    } catch { failed++; }                       // a revoked or expired key: tried again with the next version
+    user.settings.autoBuild = BUILD;
+    await S.saveSettings(env, user).catch(() => {});
+  }
+  return { build: BUILD, updated, skipped, failed, waiting };
 }
 
 // ── which services get Home rows: the six most popular (per TMDB) in your home region ──

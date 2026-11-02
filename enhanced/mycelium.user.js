@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Mycelium for Stremio
 // @namespace    https://github.com/myceliation/stremio-addon
-// @version      0.3.0
-// @description  Shelf/rating buttons, genre mixer and local watch history on web.stremio.com
+// @version      0.5.1
+// @description  Shelf and list buttons, genre mixer and local watch history on web.stremio.com
 // @match        https://web.stremio.com/*
 // @grant        none
 // @run-at       document-idle
@@ -18,7 +18,7 @@
       { key: "mycelium_url", type: "input", label: "Mycelium install link (optional)",
         description: "Only needed if the add-on isn't installed in this Stremio profile. Paste the link from the Mycelium configure page.",
         defaultValue: "" },
-      { key: "mycelium_bar", type: "toggle", label: "Shelf and rating bar on title pages", defaultValue: true },
+      { key: "mycelium_bar", type: "toggle", label: "Shelf and list buttons on title pages", defaultValue: true },
       { key: "mycelium_mixer", type: "toggle", label: "Genre mixer button in Discover", defaultValue: true },
       { key: "mycelium_history", type: "toggle", label: "Watch history button in Library", defaultValue: true },
     ]);
@@ -34,6 +34,17 @@
     } catch { return d; }
   };
   const log = m => { try { API.logger.info("[mycelium] " + m); } catch { console.log("[mycelium]", m); } };
+
+  // ── a link handed over by the Mycelium window (?myc=<token>), kept for next time ─
+  try {
+    const tok = new URLSearchParams(location.search).get("myc");
+    if (tok && /^[\w-]{8,}$/.test(tok)) {
+      const local = JSON.parse(localStorage.getItem("mycelium_settings") || "{}");
+      local.mycelium_url = location.origin + "/" + tok;
+      localStorage.setItem("mycelium_settings", JSON.stringify(local));
+      history.replaceState(null, "", location.pathname + location.hash);
+    }
+  } catch {}
 
   // ── find this user's Mycelium base URL ───────────────────────────────────────
   let BASE = null;
@@ -91,10 +102,10 @@
   const el = (tag, attrs = {}, html = "") => { const e = document.createElement(tag); Object.assign(e, attrs); if (html) e.innerHTML = html; return e; };
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const SHELVES = [["library", "📚", "Library"], ["watched", "✔", "Watched"], ["loved", "❤", "Loved"], ["waiting", "⏳", "Waiting"],
+  const SHELVES = [["library", "📚", "Library"], ["watched", "✔", "Watched"], ["loved", "❤", "Loved"], ["liked", "👍", "Liked"], ["waiting", "⏳", "Waiting"],
                    ["rewatch", "🔁", "Rewatch"], ["dropped", "✖", "Dropped"], ["ignore", "👎", "Ignore"], ["blacklist", "🚫", "Blacklist"]];
 
-  // ── 1. shelf + rating bar on title pages ─────────────────────────────────────
+  // ── 1. shelf and list bar on title pages ─────────────────────────────────────
   function route() {
     const m = location.hash.match(/^#\/detail\/(movie|series)\/(tt\d+)/);
     return m ? { type: m[1], id: m[2] } : null;
@@ -120,22 +131,16 @@
       const on = k => (st.lists || st.shelves || []).includes(k);
       bar.innerHTML = SHELVES.map(([k, i, l]) =>
         `<button class="myc-btn" data-k="${k}" aria-pressed="${on(k)}" title="${l}">${i} ${l}</button>`).join("")
-        + `<span style="margin-left:.5rem">${[1, 2, 3, 4, 5].map(n =>
-          `<button class="myc-star ${st.rating && st.rating.s >= n ? "on" : ""}" data-s="${n}" aria-label="${n} stars">★</button>`).join("")}</span>`
         + (lists.length ? `<div class="myc-chips" style="width:100%;margin:.2rem 0 0">${lists.map(l =>
           `<button class="myc-btn" data-k="l:${esc(l.lid)}" aria-pressed="${on("l:" + l.lid)}">📋 ${esc(l.name)}</button>`).join("")}</div>` : "");
     };
     paint(state);
     bar.addEventListener("click", async e => {
       e.stopPropagation();
-      const b = e.target.closest("[data-k],[data-s]");
+      const b = e.target.closest("[data-k]");
       if (!b) return;
       try {
-        if (b.dataset.k) paint(await api("/api/member", { id: r.id, type: r.type, list: b.dataset.k, on: b.getAttribute("aria-pressed") !== "true" }));
-      else {
-        const n = +b.dataset.s;
-        paint(await api("/api/rate", { id: r.id, type: r.type, stars: state.rating && state.rating.s === n ? 0 : n, review: state.rating?.r || "" }));
-      }
+        paint(await api("/api/member", { id: r.id, type: r.type, list: b.dataset.k, on: b.getAttribute("aria-pressed") !== "true" }));
       } catch (err) { log(err.message); b.title = "Couldn't save: " + err.message; }
     });
   }
@@ -211,7 +216,7 @@
         const cur = (await api("/api/settings")).settings;
         const name = q.replace(/\b\w/g, c => c.toUpperCase());
         await api("/api/settings", { ...cur, custom: [...(cur.custom || []), { name, query: q, type: sel.type }] });
-        out.innerHTML = `<p class="sub" style="margin-top:1rem">Saved “${esc(name)}” as one of your own genres. It shows up as a row after “Add to Stremio” (step 3 in the Mycelium window) or “Update Mycelium in Stremio” on the settings page.</p>`;
+        out.innerHTML = `<p class="sub" style="margin-top:1rem">Saved “${esc(name)}” as one of your own genres. It shows up in Discover under ✎ Your own genres (next to Cult, camp & exploitation) after “Add to Stremio” (step 3 in the Mycelium window) or “Update Mycelium in Stremio” on the settings page.</p>`;
       }
     });
   }
@@ -246,7 +251,7 @@
     const FILTERS = ["Finished & in progress", "Finished", "In progress", "Rewatched", "Everything I opened"];
     let type = "movie", f = FILTERS[0], src = "stremio";
     const W = { sort_by: "", genre: "", year: "" };          // My Watched list: the same sorts and filters as Discover
-    const WSORTS = ["Recently added", "Newest releases", "Oldest releases", "TMDB rating", "My rating", "A–Z", "Shuffle"];
+    const WSORTS = ["Recently added", "Newest releases", "Oldest releases", "TMDB rating", "A–Z", "Shuffle"];
     const WGENRES = ["Action", "Animation", "Comedy", "Crime", "Documentary", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Thriller", "War", "Western"];
     const WYEARS = ["2020s", "2010s", "2000s", "1990s", "1980s", "1970s", "1960s", "1950s", "1940s"];
     const wchips = (key, opts) => `<div class="myc-chips">${opts.map(o =>
@@ -337,6 +342,79 @@
 
   let pending = false;
   const tick = () => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; mountNavTab(); mountBar(); mountFab(); }); };
+  // ── one notice: sign in here once; watching needs normal Stremio ─────────────
+  function notice() {
+    if (document.getElementById("myc-notice")) return;
+    let signedIn = false;
+    try { signedIn = !!(JSON.parse(localStorage.getItem("profile") || "{}").auth); } catch {}
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem("mycelium_notice") || "{}"); } catch {}
+    if (signedIn && seen.play) return;
+    const el = document.createElement("div");
+    el.id = "myc-notice";
+    el.style.cssText = "position:fixed;left:50%;bottom:1.2rem;transform:translateX(-50%);z-index:99999;max-width:44rem;" +
+      "background:#1b1b2b;color:#fff;border:1px solid #7b5bf5;border-radius:.8rem;padding:.8rem 1rem;font:14px/1.4 sans-serif;" +
+      "box-shadow:0 6px 24px rgba(0,0,0,.5);display:flex;gap:.8rem;align-items:flex-start";
+    el.innerHTML = "<div>🍄 <b>Mycelium interface</b><br>" +
+      (signedIn ? "" : "Sign in to Stremio here once (the person icon, top right). This window keeps its own sign-in, so until then your library, add-ons and Mycelium rows aren't shown.<br>") +
+      "Playing videos doesn't work here: Stremio's streaming server only plays for Stremio's own pages. Watch in normal Stremio.</div>";
+    const x = document.createElement("button");
+    x.textContent = "OK";
+    x.style.cssText = "all:unset;cursor:pointer;padding:.3rem .8rem;border-radius:1rem;background:#7b5bf5;font-weight:600";
+    x.onclick = () => { try { localStorage.setItem("mycelium_notice", JSON.stringify({ play: true })); } catch {} el.remove(); };
+    el.appendChild(x);
+    document.body.appendChild(el);
+  }
+  setTimeout(notice, 2500);
+
+  // ── Movies ⇄ Series in Discover keeps your place in Mycelium's hubs ──────────
+  // Stremio resets every dropdown when the type changes; for Mycelium's per-type hubs
+  // (microgenres, wars & prejudice, streaming) we jump to the same row in the other
+  // type's hub and keep each choice that exists there ("World War II" → "World War II series").
+  let lastDiscover = null;
+  const manCache = {};
+  const parseDiscover = h => {
+    const m = /^#\/discover\/([^/]+)\/(movie|series)\/([^?]+)(?:\?(.*))?$/.exec(h || "");
+    return m ? { tu: decodeURIComponent(m[1]), type: m[2], cat: decodeURIComponent(m[3]), q: new URLSearchParams(m[4] || "") } : null;
+  };
+  async function keepPlace() {
+    const now = parseDiscover(location.hash), was = lastDiscover;
+    lastDiscover = now;
+    if (!now || !was || now.type === was.type) return;
+    const hub = /\/(microgenres\d?|sides|allservices)\/(movie|series)\/manifest\.json$/;
+    // Mycelium's per-type hubs: look in the other type's hub (the microgenre families are split over several add-ons);
+    // any other add-on with both types (Mycelium itself, Cinemeta, TMDB…): the same catalog in the same add-on
+    const kinds = hub.test(was.tu) ? (/\/microgenres\d?\//.test(was.tu) ? ["microgenres", "microgenres2", "microgenres3", "microgenres4", "microgenres5", "microgenres6"] : [was.tu.match(hub)[1]]) : [null];
+    try {
+      let tu = null, cat = null;
+      for (const k of kinds) {
+        const u = k ? was.tu.replace(hub, `/${k}/${now.type}/manifest.json`) : was.tu;
+        const man = manCache[u] || (manCache[u] = await (await fetch(u)).json().catch(() => ({})));
+        cat = (man.catalogs || []).find(c => c.id === was.cat && c.type === now.type);
+        if (cat) { tu = u; break; }
+      }
+      if (!cat) return;
+      const q = new URLSearchParams();
+      // "Action" ⇄ "Action & Adventure", "Sci-Fi" ⇄ "Sci-Fi & Fantasy", "World War II" ⇄ "World War II series"
+      const words = x => String(x).toLowerCase().replace(/ \(series\)$| series$/, "").split(/\s*&\s*|\s+and\s+|\s*\/\s*/).filter(Boolean);
+      for (const [k, v] of was.q) {
+        const ex = (cat.extra || []).find(e => e.name === k);
+        if (!ex) continue;
+        const opts = ex.options || [];
+        const base = v.replace(/ \(series\)$| series$/, "");
+        const hit = [v, base, base + " series", base + " (series)"].find(o => opts.includes(o))
+          || opts.find(o => { const a = words(o), b = words(v); return a[0] === b[0] || a.some(w => b.includes(w)); });
+        if (hit) q.set(k, hit);
+      }
+      if (!q.toString() && tu === now.tu && cat.id === now.cat) return;   // nothing to carry over
+      const hash = `#/discover/${encodeURIComponent(tu)}/${now.type}/${encodeURIComponent(cat.id)}${q.toString() ? "?" + q : ""}`;
+      lastDiscover = parseDiscover(hash);
+      location.replace(hash);
+    } catch {}
+  }
+  lastDiscover = parseDiscover(location.hash);
+  window.addEventListener("hashchange", keepPlace);
+
   window.addEventListener("hashchange", tick);
   new MutationObserver(tick).observe(document.body, { childList: true, subtree: true });
   tick();

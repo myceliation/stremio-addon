@@ -6,7 +6,7 @@ import { COUNTRY_NAMES, TMDB_SORTS, WIDE_COUNTRIES } from "./catalogs.js";
 import { warsFor, topicsFor, MADE_IN, SIDE_ALL, SIDE_OTHER, KINDS } from "./sides.js";
 
 export const ADDON_ID = "community.myceliation.mycelium";
-export const VERSION = "0.12.1";
+export const VERSION = "0.12.2";
 
 const skip = { name: "skip" };
 // Phones and TVs: Stremio's Android, iOS and TV apps show only the dropdown called "genre". So in the add-ons
@@ -280,6 +280,7 @@ function libParts(user, t) {
     if (names.length) cats.push({ type: t, id: `lib.${label.split(" ")[1] === "basics" ? "basics" : label.split(/[ ,&']/)[0].toLowerCase()}`,
       name: `📚 Library · ${label}`, extra: [{ name: "microgenre", isRequired: true, options: [LIB_ALL, ...names] }, ...extra] });
   }
+  if (!cats.length) { LIB_PARTS.set(key, []); return []; }      // nothing saved yet: no Library add-on until there is
   const parts = [[]]; let n = 0;
   for (const c of cats) { const z = JSON.stringify(c).length; if (n && n + z > 17000) { parts.push([]); n = 0; } parts[parts.length - 1].push(c); n += z; }
   LIB_PARTS.set(key, parts);
@@ -303,7 +304,7 @@ export function sidesManifest(user, origin, type) {
   const t = type === "series" ? "series" : "movie";
   const yrs = years(t).filter(y => y.endsWith("s")), sorts = { name: "sort_by", options: SHORT_SORTS }, kind = { name: "kind", options: KINDS };
   const cats = warsFor(t).map(w => ({ type: t, id: `war.${w.id}`, name: `⚔ ${w.name}`, extra: [
-    { name: "side", isRequired: true, options: [SIDE_ALL, ...w.shown.map(s => s[0]), SIDE_OTHER] }, kind, { name: "year", options: yrs }, sorts, skip] }));
+    { name: "side", isRequired: true, options: [SIDE_ALL, ...w.shown.map(s => s[0]), ...(t === "movie" ? [SIDE_OTHER] : [])] }, kind, { name: "year", options: yrs }, sorts, skip] }));
   cats.push({ type: t, id: "war.other", name: "⚔ Every other war & conflict", extra: [
     { name: "kind", isRequired: true, options: ["Films and documentaries", ...KINDS] }, { name: "country", options: Object.keys(MADE_IN) },
     { name: "year", options: yrs }, sorts, skip] });

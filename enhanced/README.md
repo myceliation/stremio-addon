@@ -12,7 +12,7 @@ userscript versions.
 
 | File | What it does |
 |---|---|
-| `mycelium.plugin.js` / `webmods/mycelium/` / `mycelium.user.js` | Shelf buttons (Loved, Waiting, Rewatch, Dropped, Ignore, Blacklist) and a 5-star rating under every title's action buttons. A **🧪 Mix genres** button in Discover (any combination of genres, decade, country, sort, extra words; "Save as a row" adds it to your board). A **🕓 Watch history** button in Library with Films/Series and Finished / In progress / Rewatched filters, read from Stremio's local storage on that computer. Nothing is sent anywhere, and no add-on connection is needed. |
+| `mycelium.plugin.js` / `webmods/mycelium/` / `mycelium.user.js` | Shelf buttons (Loved, Waiting, Rewatch, Dropped, Ignore, Blacklist) and buttons for your own lists under every title's action buttons. A **🧪 Mix genres** button in Discover (any combination of genres, decade, country, sort, extra words; "Save as a row" adds it to your board). A **🕓 Watch history** button in Library with Films/Series and Finished / In progress / Rewatched filters, read from Stremio's local storage on that computer. Nothing is sent anywhere, and no add-on connection is needed. |
 | `mycelium-night.theme.css` | The Mycelium palette (deep ink, violet, orchid) using Stremio's own CSS variables. |
 | `compact.theme.css` | Denser layout: smaller interface scale and nav bars. Stacks with any colour theme. |
 
