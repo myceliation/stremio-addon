@@ -203,11 +203,11 @@ ${insideCard()}
 
   <section class="card">
     <h2>Microgenres on your Home board</h2>
-    <p class="note">You don't need to pick anything here to get microgenres: all ${MG_COUNT().all.toLocaleString("en")} are already in Stremio's Discover, in the 🍄 Mycelium add-ons (one dropdown per family). Ticking one here also gives it its own row on your Home board. Up to 20, because Stremio loads every Home row each time you open it, and it refuses an add-on that gets too big. Every title's page also lists its microgenres as links.</p>
+    <p class="note">You don't need to pick anything here to get microgenres: all ${MG_COUNT().all.toLocaleString("en")} are already in Stremio's Discover, in the 🍄 Mycelium add-ons (one dropdown per family). Ticking one here also gives it its own row on your Home board. Up to 20, because Stremio loads every Home row each time you open it, and it refuses an add-on that gets too big. Every title's page also lists its microgenres as links. ${token ? `<a href="/${token}/untagged">See the titles in your Library that fall in no microgenre</a>.` : ""}</p>
     <div class="row" style="margin-top:10px"><input type="text" class="mg-search" id="mgSearch" placeholder="Filter microgenres" style="max-width:300px;margin:0">
       <button class="btn ghost" id="mgNone" type="button">Clear</button></div>
     <div class="grid" id="mgs" style="max-height:420px;overflow:auto;margin-top:8px">${microgenres.map(m =>
-      `<label class="chk" data-name="${esc(m.name.toLowerCase())}"><input type="checkbox" value="${m.id}">${esc(m.name)}${m.type === "series" ? " (series)" : ""}</label>`).join("")}</div>
+      `<label class="chk" data-name="${esc(m.long.toLowerCase())}"><input type="checkbox" value="${m.id}">${esc(m.long)}${m.type === "series" ? " (series)" : ""}</label>`).join("")}</div>
   </section>
 
   <section class="card">
@@ -464,6 +464,21 @@ function paint(st){document.querySelectorAll("#lists button").forEach(b=>{const 
 document.getElementById("lists").onclick=async e=>{const b=e.target.closest("button");if(!b)return;
   paint(await post("member",{id:ID,type:TY,list:b.dataset.k,on:b.getAttribute("aria-pressed")!=="true"}))};`;
   return page(meta.name + " · Mycelium", body, script);
+}
+
+export function untaggedPage({ token, list, waiting }) {
+  const e = x => String(x ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const part = t => { const xs = list.filter(x => x.type === t); return `<h2>${t === "series" ? "Series" : "Films"} (${xs.length})</h2>` +
+    (xs.length ? `<ul>${xs.map(x => `<li><a href="https://www.imdb.com/title/${e(x.id)}/" target="_blank" rel="noopener">${e(x.name && x.name !== x.id ? x.name : x.id)}</a></li>`).join("")}</ul>` : "<p class=\"note\">None.</p>"); };
+  const body = `<div class="wrap"><h1>In no microgenre</h1>
+<p class="lead">Titles in your Library that were checked against every microgenre and fall in none. They're what the next rows could be built from.</p>
+${waiting ? `<p class="note">${waiting.toLocaleString("en")} titles haven't been checked yet. <button class="btn" id="fill" type="button">Check them now</button> <span id="fillMsg" class="note"></span></p>` : ""}
+${part("movie")}${part("series")}
+<p><a href="/${e(token)}/configure">Back to settings</a></p></div>`;
+  const script = `const T=${JSON.stringify(token)};const b=document.getElementById("fill");if(b)b.onclick=async()=>{b.disabled=true;const m=document.getElementById("fillMsg");let n=0;
+for(;;){let r;try{r=await fetch("/"+T+"/api/mg-fill",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}).then(x=>x.json())}catch{m.textContent="Stopped; try again.";break}
+n+=r.filled||0;m.textContent=n+" checked…";if(r.done||!r.filled){location.reload();break}}};`;
+  return page("In no microgenre · Mycelium", body, script);
 }
 
 export function sharePage({ origin, share, who, watched, loved }) {

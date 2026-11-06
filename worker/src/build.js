@@ -1,2 +1,2 @@
 // made by scripts/stamp.mjs on deploy
-export const BUILD = "0f757e3a6f1e";
+export const BUILD = "b7889df3ab93";

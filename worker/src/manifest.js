@@ -6,7 +6,7 @@ import { COUNTRY_NAMES, TMDB_SORTS, WIDE_COUNTRIES } from "./catalogs.js";
 import { warsFor, topicsFor, MADE_IN, SIDE_ALL, SIDE_OTHER, KINDS } from "./sides.js";
 
 export const ADDON_ID = "community.myceliation.mycelium";
-export const VERSION = "0.12.2";
+export const VERSION = "0.12.3";
 
 const skip = { name: "skip" };
 // Phones and TVs: Stremio's Android, iOS and TV apps show only the dropdown called "genre". So in the add-ons
@@ -84,7 +84,7 @@ function setMgOptions(s) {
   const top = s.mgTop || {};
   for (const type of ["movie", "series"]) {
     const ids = (top[type] && top[type].length ? top[type] : (s.microgenres || [])).filter(id => MG_BY_ID[id] && MG_BY_ID[id].type === type);
-    MG_OPTS[type] = ids.slice(0, 30).map(id => MG_BY_ID[id].name);
+    MG_OPTS[type] = ids.slice(0, 30).map(id => MG_BY_ID[id].tag);
   }
 }
 
@@ -123,7 +123,7 @@ export function buildManifest(user, origin, lists = []) {
   // your own genres live at the end of the microgenres' "Everything else" family (no rows of their own)
   for (const mid of s.microgenres || []) {
     const m = MG_BY_ID[mid];
-    if (m) cats.push({ type: m.type, id: `mg.${mid}`, name: `🍄 ${m.name}`, extra: [skip] });
+    if (m) cats.push({ type: m.type, id: `mg.${mid}`, name: `🍄 ${m.tag}`, extra: [skip] });
   }
   if (r.gems) cats.push(...both("gems", "💎 Hidden gems", t => leanExtras(t, { sorts: [] })));
   // Browse everything: an accurate replacement for Discover's Popular / New / year dropdowns.
@@ -134,6 +134,9 @@ export function buildManifest(user, origin, lists = []) {
     cats.push({ type, id: "browse", name: type === "series" ? "🔎 All series" : "🔎 All films", extra: ex });
   }
   // every microgenre is browsable in Discover through the "Mycelium · Microgenres" add-ons (one per type)
+  // Stremio's search: titles first (by name, exact matches on top), then the mixer and people rows, which stay quiet when
+  // what you typed is a title ("Russian Ark" isn't a mix of Russian films; "May" isn't the actor called May)
+  cats.push(...both("titles", "🔎 Titles", () => [{ name: "search", isRequired: true }, skip]));
   cats.push(...both("mix", "🧪 Genre mixer", () => [{ name: "search", isRequired: true }, skip]));
   // paste a list link into Stremio's search → an "import this list" tile
   cats.push({ type: "movie", id: "import", name: "📥 Import into Mycelium", extra: [{ name: "search", isRequired: true }] });
@@ -148,8 +151,8 @@ export function buildManifest(user, origin, lists = []) {
   const size = () => JSON.stringify(cats).length;
   const LIMIT = 15000;   // old 19 KB version was accepted, the 45 KB one refused; stay well under
   if (size() > LIMIT) for (const c of cats) if (c.id === "mg") {
-    const picked = MICROGENRES.filter(m => m.type === c.type && (s.microgenres || []).includes(m.id)).map(m => m.name);
-    c.extra[0].options = picked.length ? picked : MICROGENRES.filter(m => m.type === c.type).slice(0, 40).map(m => m.name);
+    const picked = MICROGENRES.filter(m => m.type === c.type && (s.microgenres || []).includes(m.id)).map(m => m.tag);
+    c.extra[0].options = picked.length ? picked : MICROGENRES.filter(m => m.type === c.type).slice(0, 40).map(m => m.tag);
   }
   if (size() > LIMIT) for (const c of cats) if (c.id === "list.library") c.extra = [...listExtra(c.type), ...(batches.length ? [{ name: "import", options: batches }] : [])];
   if (size() > LIMIT) for (const c of cats) c.extra = (c.extra || []).filter(e => e.name !== "sort_by" || e.isRequired || c.id.startsWith("list."));
@@ -211,12 +214,17 @@ export function packManifest(user, origin, lists, n) {
     behaviorHints: { configurable: true, configurationRequired: false },
   };
 }
+/** A War-family row that ⚔ Wars from every side has as its own row (for this type), so it lives there instead. */
+export const sideShown = m => !!m.side && warsFor(m.type).some(w => w.id === m.side);
+// a family's dropdown: "All" first, then A–Z (numbers in order, so decades and groups like "Oscars: …" sit together), "Everything else" last
+const edge = m => m.allof ? 0 : m.catchall || m.name === "Everything else" ? 2 : 1;
+const byDropdown = (a, b) => edge(a) - edge(b) || (a.sortKey || a.name).localeCompare(b.sortKey || b.name, "en", { numeric: true, sensitivity: "base" });
 // The families are split over two add-ons per type (Stremio refuses an add-on whose description gets too big):
 // part 1 takes families in order until it holds about half of the total.
 const famCats = t => FAMILIES.map(([fam, label]) => {
   // "All: …" first, the family's "Everything else" last
-  const names = MICROGENRES.filter(m => m.type === t && familiesOf(m).includes(fam))
-    .sort((a, b) => (a.allof ? -1 : a.catchall ? 1 : 0) - (b.allof ? -1 : b.catchall ? 1 : 0)).map(m => m.name);
+  const names = MICROGENRES.filter(m => m.type === t && !sideShown(m) && familiesOf(m).includes(fam))
+    .sort(byDropdown).map(m => m.name);
   return names.length ? { fam, cat: { type: t, id: `mgf.${fam}`, name: `${fam === "channels" ? "📺" : "🍄"} ${label}`, extra: [{ name: "microgenre", isRequired: true, options: names }, skip,
     { name: "genre", options: genreNames(t) }, { name: "year", options: years(t) },
     ...(["prejudice", "war", "world", "china", "eras", "awards"].includes(fam) ? [{ name: "country", options: Object.keys(WIDE_COUNTRIES) }] : []), { name: "sort_by", options: SHORT_SORTS }] } } : null;
@@ -225,7 +233,7 @@ const PARTS = {};
 export function mgParts(t) {
   if (PARTS[t]) return PARTS[t];
   // one add-on per lump of families (FAMILY_GROUPS), split again only if a lump is too big for Stremio to sync (~18 KB)
-  const CAP = 17000, parts = [], all = famCats(t);
+  const CAP = 15500, parts = [], all = famCats(t);
   for (const [label, fams] of FAMILY_GROUPS) {
     let cur = [], n = 0, k = 0;
     for (const x of all.filter(x => fams.includes(x.fam))) {
@@ -248,10 +256,7 @@ export function microgenresManifest(user, origin, type, part = 1) {
   const t = type === "series" ? "series" : "movie";
   const fams = mgParts(t)[part - 1] || [];
   const cats = famCats(t).filter(x => fams.includes(x.fam)).map(x => x.cat);
-  // your own genres (from the install page): their own family, right after Cult, camp & exploitation
-  const mine = ((user && user.settings && user.settings.custom) || []).filter(c => (c.type || "movie") === t && c.query);
-  if (mine.length && part === 1) cats.unshift({ type: t, id: "mgf.mine", name: "✎ Your own genres",
-    extra: [{ name: "microgenre", isRequired: true, options: [...new Set(mine.map(c => c.name || c.query))] }, skip] });
+
   const labels = FAMILIES.filter(([f]) => fams.includes(f)).map(([, l]) => l);
   return {
     id: `${ADDON_ID}.microgenres${part > 1 ? part : ""}.${t}`, version: VERSION,
@@ -273,10 +278,10 @@ function libParts(user, t) {
   const have = new Set(((s.mgAll || {})[t] || (s.mgTop || {})[t] || []).filter(id => MG_BY_ID[id] && MG_BY_ID[id].type === t));
   const extra = listExtras(t).filter(e => e.name !== "microgenre" && e.name !== "search");
   const cats = [];
-  for (const [label, fams] of FAMILY_GROUPS.map(([l, f]) => [l, l.startsWith("Animation") ? [...f, "channels"] : f])) {
+  for (const [label, fams] of FAMILY_GROUPS.map(([l, f]) => [l, f.includes("normal") ? ["channels", ...f] : f])) {
     const names = [];
-    for (const fam of fams) for (const m of MICROGENRES)
-      if (m.type === t && have.has(m.id) && familyOf(m) === fam && !names.includes(m.name)) names.push(m.name);
+    for (const fam of fams) for (const m of MICROGENRES.filter(x => x.type === t && have.has(x.id) && familyOf(x) === fam).sort(byDropdown))
+      if (!names.includes(m.tag)) names.push(m.tag);
     if (names.length) cats.push({ type: t, id: `lib.${label.split(" ")[1] === "basics" ? "basics" : label.split(/[ ,&']/)[0].toLowerCase()}`,
       name: `📚 Library · ${label}`, extra: [{ name: "microgenre", isRequired: true, options: [LIB_ALL, ...names] }, ...extra] });
   }
@@ -323,16 +328,22 @@ export function regionLabel(code) {
   try { REGION_NAMES ||= new Intl.DisplayNames(["en"], { type: "region" }); return `${REGION_NAMES.of(code)} (${code})`; }
   catch { return code; }
 }
+// ✎ Your own genres: first in Discover's list after the Library, so they ride at the top of the streaming add-on
+const mineCat = (user, t) => {
+  const mine = ((user && user.settings && user.settings.custom) || []).filter(c => (c.type || "movie") === t && c.query);
+  return mine.length ? [{ type: t, id: "mgf.mine", name: "✎ Your own genres",
+    extra: [{ name: "microgenre", isRequired: true, options: [...new Set(mine.map(c => c.name || c.query))] }, skip] }] : [];
+};
 export function allServicesManifest(user, origin, type) {
   const s = user.settings;
   const names = normalizeProviders(s.providers).map(p => showName(p.name).trim()).sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
   const regions = s.regions && s.regions.length ? s.regions : [s.region || "US"];
   const t = type === "series" ? "series" : "movie";
   return {
-    id: `${ADDON_ID}.allservices.${t}`, version: VERSION, name: `Mycelium · Streaming & TV channels (${t === "series" ? "series" : "films"})`,
-    description: `Every streaming service you picked (${names.length}) in one Discover row, then genre, region and sort; and every TV channel and streamer's own shows and films.`,
+    id: `${ADDON_ID}.allservices.${t}`, version: VERSION, name: `Mycelium · Your genres, streaming & TV (${t === "series" ? "series" : "films"})`,
+    description: `Your own genres; every streaming service you picked (${names.length}) in one Discover row, then genre, region and sort; and every TV channel's and service's own shows and films.`,
     logo: origin + "/logo.svg", types: [t], idPrefixes: ["tt"], resources: ["catalog"],
-    catalogs: [...(names.length ? [{ type: t, id: "svc", name: `📺 Streaming services`, extra: [
+    catalogs: [...mineCat(user, t), ...(names.length ? [{ type: t, id: "svc", name: `📺 Streaming services`, extra: [
       { name: "service", isRequired: true, options: names }, skip, { name: "genre", options: genreNames(t) },
       ...(regions.length > 1 ? [{ name: "region", options: regions.map(regionLabel) }] : []), { name: "sort_by", options: SHORT_SORTS }] }] : []), ...famCats(t).filter(x => x.fam === "channels").map(x => x.cat)].map(forPhones),
     behaviorHints: { configurable: true, configurationRequired: false },

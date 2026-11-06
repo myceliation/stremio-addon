@@ -1,6 +1,6 @@
 // Storage on Cloudflare D1 (SQLite). See migrations/0001_init.sql.
 import { randomId, cacheGet, cachePut } from "./util.js";
-import { MICROGENRES, MG_TAG } from "./microgenres.js";
+import { MICROGENRES, MG_TAG, mgByName } from "./microgenres.js";
 import { getUser, datastoreMeta, datastoreGet, cinemeta, likesAll, likeSend, setStremioWatched } from "./stremio.js";
 
 // ── authKey at rest (only if the user connects history): AES-GCM ─────────────
@@ -264,7 +264,7 @@ function listQuery(user, list, type, f, hide) {
   if (f.year) yearClause(f.year, where, args);
   if (f.language) { where.push("t.lang=?"); args.push(LANGUAGES[f.language] || f.language); }
   if (f.microgenre) {
-    const m = MICROGENRES.find(x => x.name === f.microgenre && x.type === type) || MICROGENRES.find(x => x.name === f.microgenre);
+    const m = mgByName(f.microgenre, type) || mgByName(f.microgenre);
     if (m) { where.push("t.mg LIKE ?"); args.push(`%|${m.id}|%`); }
   }
   switch (f.show) {
@@ -503,6 +503,11 @@ export async function microgenreStats(env, user) {
   user.settings.mgAll = all;
   await saveSettings(env, user);
   return Object.fromEntries(Object.entries(count).map(([t, c]) => [t, Object.keys(c).length]));
+}
+/** Library titles that were checked against every microgenre and fall in none (ideas for new rows). */
+export async function untaggedTitles(env, uid) {
+  return (await db(env).prepare(`SELECT DISTINCT i.id, i.type, t.name FROM items i JOIN titles t ON t.id=i.id
+      WHERE i.uid=? AND t.mg = ? ORDER BY i.type, t.name LIMIT 3000`).bind(uid, MG_TAG + "|").all()).results;
 }
 export async function titlesMissingMg(env, uid, n) {
   return (await db(env).prepare(`SELECT DISTINCT i.id, i.type FROM items i JOIN titles t ON t.id=i.id

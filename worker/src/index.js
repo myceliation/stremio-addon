@@ -1,6 +1,6 @@
 import { json, html, CORS, parseExtra, cacheGet, cachePut, ALS, countingDB, used, spend, room } from "./util.js";
-import { buildManifest, historyManifest, publicManifest, RATING_FILTERS, listFilters, ADDON_ID, HISTORY_ID, servicePacks, packManifest, VERSION, allServicesManifest, microgenresManifest, sidesManifest, mgPartPath, mgPartCount, libraryManifest, libPartCount, LIB_ALL, fromPhones } from "./manifest.js";
-import { sidesSpec } from "./sides.js";
+import { buildManifest, historyManifest, publicManifest, RATING_FILTERS, listFilters, ADDON_ID, HISTORY_ID, servicePacks, packManifest, VERSION, allServicesManifest, microgenresManifest, sidesManifest, mgPartPath, mgPartCount, libraryManifest, libPartCount, LIB_ALL, fromPhones, sideShown } from "./manifest.js";
+import { sidesSpec, SIDE_ALL } from "./sides.js";
 import { BUILD } from "./build.js";
 import { CAT_ROWS } from "./catrows.js";
 import { BUILDERS, genreId, COUNTRIES_BY_NAME, WIDE_COUNTRIES } from "./catalogs.js";
@@ -12,9 +12,9 @@ import { pagedCatalog, newBudget, toMeta, imdbMap, tmdb, titleInfo } from "./tmd
 import * as S from "./store.js";
 import * as I from "./importer.js";
 import { getUser, linkCreate, linkRead, datastoreMeta, datastorePut, libraryItem, reorderAddons } from "./stremio.js";
-import { configurePage, importPage, actPage, sharePage, historySetupPage, markPage, LOGO_SVG, HISTORY_SVG, tileSvg } from "./pages.js";
+import { configurePage, importPage, actPage, sharePage, historySetupPage, markPage, untaggedPage, LOGO_SVG, HISTORY_SVG, tileSvg } from "./pages.js";
 import { PROVIDERS, REGIONS, normalizeProviders, MOVIE_GENRES, TV_GENRES } from "./providers.js";
-import { MICROGENRES, MG_BY_ID, matchMicrogenres, mgString, mgCurrent, familyOf, FAMILIES } from "./microgenres.js";
+import { MICROGENRES, MG_BY_ID, matchMicrogenres, mgString, mgCurrent, familyOf, FAMILIES, mgByName } from "./microgenres.js";
 import UI_PLUGIN from "./uiplugin.js";
 
 export default {
@@ -141,6 +141,7 @@ async function route(req, env, ctx, url, origin, p) {
     }
   }
   if (p[1] === "configure") return html(configurePage(pageOpts(origin, T)));
+  if (p[1] === "untagged") return html(untaggedPage({ token: T, list: await S.untaggedTitles(env, user.uid), waiting: (await S.titlesMissingMg(env, user.uid, 5000)).length }));
   if (p[1] === "import") return html(importPage(pageOpts(origin, T)));
 
   // Watch History add-on, served under /{token}/history/ (old /watched/ links still work)
@@ -192,10 +193,12 @@ async function route(req, env, ctx, url, origin, p) {
     try {
       const ms = await microgenresOf(env, type, id, meta);
       const manifestUrl = encodeURIComponent(`${origin}/${T}/manifest.json`);
-      // phones and TVs don't show link groups other than Stremio's own, so the microgenres also go at the end of the description
-      if (ms.length) meta.description = `${meta.description || ""}\n\n🍄 ${ms.slice(0, 14).map(m => m.name.replace(/:.*$/, "")).join(" · ")}`.trim();
-      meta.links = [...(meta.links || []), ...ms.slice(0, 14).map(m => ({ name: m.name.replace(/:.*$/, ""), category: "Microgenres",
-        url: `stremio:///discover/${encodeURIComponent(`${origin}/${T}/${mgPartPath(m.type, familyOf(m))}/${m.type}/manifest.json`)}/${m.type}/mgf.${familyOf(m)}?genre=${encodeURIComponent(m.name)}` }))];
+      // phones and TVs don't show link groups other than Stremio's own, so the microgenres also go in the description,
+      // first (TV pages only show its opening lines)
+      if (ms.length) meta.description = `🍄 ${ms.slice(0, 8).map(m => m.tag.replace(/:.*$/, "")).join(" · ")}\n\n${meta.description || ""}`.trim();
+      meta.links = [...(meta.links || []), ...ms.slice(0, 14).map(m => ({ name: m.tag.replace(/:.*$/, ""), category: "Microgenres",
+        url: sideShown(m) ? `stremio:///discover/${encodeURIComponent(`${origin}/${T}/sides/${m.type}/manifest.json`)}/${m.type}/war.${m.side}?genre=${encodeURIComponent(SIDE_ALL)}`
+          : `stremio:///discover/${encodeURIComponent(`${origin}/${T}/${mgPartPath(m.type, familyOf(m))}/${m.type}/manifest.json`)}/${m.type}/mgf.${familyOf(m)}?genre=${encodeURIComponent(m.name)}` }))];
     } catch { /* the page without microgenres */ }
     return json({ meta }, 200, { "cache-control": "max-age=3600" });
   }
@@ -344,9 +347,9 @@ async function api(req, env, ctx, url, origin, user, p) {
     const packs = servicePacks(user, origin, await S.getLists(env, user.uid));
     return json([`${origin}/${T}/manifest.json`, ...(user.settings.rows.historyAddon ? [`${origin}/${T}/history/manifest.json`] : []),
       ...(user.settings.rows.library ? ["movie", "series"].flatMap(t => Array.from({ length: libPartCount(user, t) }, (_, i) => `${origin}/${T}/library${i ? i + 1 : ""}/${t}/manifest.json`)) : []),
+      `${origin}/${T}/allservices/movie/manifest.json`, `${origin}/${T}/allservices/series/manifest.json`,   // ✎ your genres, 📺 services and channels
       ...["movie", "series"].flatMap(t => Array.from({ length: mgPartCount(t) }, (_, i) => `${origin}/${T}/microgenres${i ? i + 1 : ""}/${t}/manifest.json`)),
       `${origin}/${T}/sides/movie/manifest.json`, `${origin}/${T}/sides/series/manifest.json`,
-      `${origin}/${T}/allservices/movie/manifest.json`, `${origin}/${T}/allservices/series/manifest.json`,   // also carries 📺 TV channels
       ...packs.map((_, i) => `${origin}/${T}/services/${i + 1}/manifest.json`)]);
   }
   if (p[0] === "mg-stats" && req.method === "POST") return json({ ok: true, microgenres: await S.microgenreStats(env, user) });
@@ -486,7 +489,8 @@ async function catalog(env, user, type, id, extra) {
     return S.historyPage(env, user, type, extra.genre, skip);
   }
   if (id === "rated") return [];            // star ratings are gone (Stremio's Like / Love replace them); old installs see an empty row
-  if (id === "director" || id === "actor") return people(env, id, extra.search, skip);
+  if (id === "titles") return titleSearch(env, type, extra.search, skip);
+  if (id === "director" || id === "actor") return (await isTitle(env, extra.search, "movie")) ? [] : people(env, id, extra.search, skip);
   // the 🍄 Mycelium row: import, settings, your lists, then one tile per microgenre family (opens it in Discover)
   if (id === "tools") return skip ? [] : [...(user.settings.servedBuild && user.settings.servedBuild !== BUILD ? ["myc:tool:update"] : []),
     ...["import", "settings", "lists"].map(k => "myc:tool:" + k), ...FAMILIES.map(([f]) => "myc:fam:" + f)]
@@ -520,11 +524,12 @@ async function catalog(env, user, type, id, extra) {
     spec = await BUILDERS.forYou(type, extra, c);
   }
   else if (kind === "mgf") {                     // a family hub: the microgenre comes from its dropdown
-    const m = arg === "mine" ? null : MICROGENRES.find(x => x.name === extra.microgenre && x.type === type);
+    const m = arg === "mine" ? null : mgByName(extra.microgenre, type, arg);
     if (m) { spec = BUILDERS.microgenre(type, extra, c, m.id); canon = true; }
     // a studio's or channel's whole catalogue, from Wikipedia's lists and Wikidata, before TMDB's own credits
-    if (m && spec && CAT_ROWS.has(m.id + "|" + type)) {
-      const cat = await S.catalogueItems(env, m.id + "|" + type);
+    const catKeys = m ? [m.id, ...(m.aliases || [])].map(x => x + "|" + type).filter(k => CAT_ROWS.has(k)) : [];
+    if (m && spec && catKeys.length) {
+      const cat = (await Promise.all(catKeys.map(k => S.catalogueItems(env, k)))).flat();
       if (cat.length) { const have = new Set((spec.static || []).map(x => x.id)); spec = { ...spec, static: [...(spec.static || []), ...cat.filter(x => !have.has(x.id))] }; }
     }
     // festival and award rows: this year's winners and nominees (added by the hourly job) before the starting list
@@ -539,8 +544,13 @@ async function catalog(env, user, type, id, extra) {
     }
   }
   else if (kind === "mg") { spec = BUILDERS.microgenre(type, extra, c, arg); canon = true; }
-  else if (kind === "war" || kind === "prej") spec = sidesSpec(type, id, extra);
-  else if (kind === "mix") spec = await BUILDERS.mixer(type, { ...extra, fromSearch: true }, c);
+  else if (kind === "war" || kind === "prej") {
+    spec = sidesSpec(type, id, extra);
+    // "All sides": the War family's hand-picked films for that war first
+    const mg = kind === "war" && (!extra.side || extra.side === SIDE_ALL) && !extra.kind && !extra.year && MICROGENRES.find(m => m.side === arg && m.type === type && m.items);
+    if (spec && mg) { const have = new Set(mg.items.map(x => x.id)); spec = { ...spec, static: [...mg.items, ...(spec.static || []).filter(x => !have.has(x.id))] }; }
+  }
+  else if (kind === "mix") spec = (await isTitle(env, extra.search, type)) ? null : await BUILDERS.mixer(type, { ...extra, fromSearch: true }, c);
   else if (kind === "custom") {
     const cu = (user.settings.custom || []).find(x => x.id === arg);
     if (cu) spec = await BUILDERS.mixer(type, { ...extra, search: cu.query }, c);
@@ -585,6 +595,28 @@ async function catalog(env, user, type, id, extra) {
     params = alt;
   }
   return (await pagedCatalog(env, type, spec.path, params, skip, opts)).map(toMeta);
+}
+
+// 🔎 Titles: TMDB's title search (films or series), exact title matches first, then the best known
+const normT = s => String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
+async function titleHits(env, q, type, budget) {
+  if (!q || q.length < 2) return [];
+  const kind = type === "series" ? "tv" : "movie";
+  const r = (await tmdb(env, `/search/${kind}`, { query: q }, budget, 86400)).results || [];
+  const exact = x => [x.title, x.name, x.original_title, x.original_name].some(n => n && normT(n) === normT(q));
+  return r.sort((a, b) => (exact(b) - exact(a)) || ((b.vote_count || 0) - (a.vote_count || 0)));
+}
+async function isTitle(env, q, type) {
+  try { const h = await titleHits(env, q, type, newBudget()); const x = h[0]; return !!x && [x.title, x.name].some(n => n && normT(n) === normT(q)) && (x.vote_count || 0) >= 20; }
+  catch { return false; }
+}
+async function titleSearch(env, type, q, skip) {
+  if (skip) return [];
+  const budget = newBudget();
+  const hits = (await titleHits(env, q, type, budget)).slice(0, 20);
+  const map = await imdbMap(env, type === "series" ? "tv" : "movie", hits.map(x => x.id));
+  return hits.filter(x => map.get(x.id)).map(x => ({ id: map.get(x.id), type, name: x.title || x.name,
+    poster: x.poster_path ? "https://image.tmdb.org/t/p/w342" + x.poster_path : undefined, releaseInfo: (x.release_date || x.first_air_date || "").slice(0, 4) }));
 }
 
 // "Films by director" / "Films with actor" (search-only rows, from the offline tool)
@@ -726,7 +758,13 @@ async function microgenresOf(env, type, id, meta = null) {
   let mg = await S.titleMg(env, id);
   if (!mgCurrent(mg)) {
     const info = await titleInfo(env, type, id).catch(() => null);
-    mg = mgString(info ? matchMicrogenres(type, info) : []);
+    const found = info ? matchMicrogenres(type, info) : [];
+    // the studio and channel catalogues it's in (Wikipedia lists + Wikidata), after the specific ones
+    try {
+      const r = await env.DB.prepare("SELECT DISTINCT row FROM cat_items WHERE row LIKE ? AND data LIKE ?").bind(`%|${type}`, `%"${id}"%`).all();
+      for (const x of r.results || []) { const m = MG_BY_ID[x.row.split("|")[0]]; if (m && !found.includes(m)) found.push(m); }
+    } catch { /* catalogues not loaded yet */ }
+    mg = mgString(found);
     if (meta && meta.name) await S.upsertTitles(env, [{ id, type, name: meta.name, year: String(meta.releaseInfo || meta.year || "").slice(0, 4),
       poster: meta.poster, genres: meta.genres || [], lang: info && info.lang, mg }]);
     else await S.setTitleMg(env, id, type, mg);
@@ -740,9 +778,10 @@ async function freshAddons(env, user, origin) {
   const fresh = { [`${origin}/${T}/manifest.json`]: buildManifest(user, origin, lists),
                   ...(user.settings.rows.historyAddon ? { [`${origin}/${T}/history/manifest.json`]: historyManifest(user, origin) } : {}) };
   if (user.settings.rows.library) for (const t of ["movie", "series"]) for (let i = 1; i <= libPartCount(user, t); i++) fresh[`${origin}/${T}/library${i > 1 ? i : ""}/${t}/manifest.json`] = libraryManifest(user, origin, t, i);
+  // Discover's order: Library, ✎ your own genres + streaming & TV, the microgenre families, wars last
+  for (const t of ["movie", "series"]) fresh[`${origin}/${T}/allservices/${t}/manifest.json`] = allServicesManifest(user, origin, t);
   for (const t of ["movie", "series"]) for (let i = 1; i <= mgPartCount(t); i++) fresh[`${origin}/${T}/microgenres${i > 1 ? i : ""}/${t}/manifest.json`] = microgenresManifest(user, origin, t, i);
   for (const t of ["movie", "series"]) fresh[`${origin}/${T}/sides/${t}/manifest.json`] = sidesManifest(user, origin, t);
-  for (const t of ["movie", "series"]) fresh[`${origin}/${T}/allservices/${t}/manifest.json`] = allServicesManifest(user, origin, t);
   servicePacks(user, origin, lists).forEach((_, i) => { fresh[`${origin}/${T}/services/${i + 1}/manifest.json`] = packManifest(user, origin, lists, i + 1); });
   return fresh;
 }

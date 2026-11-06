@@ -1,5 +1,13 @@
+import { SHORT25 } from "./shortnames.js";
+import { STUDIO_TWINS } from "./studiotwins.js";
+import { NEW_ROWS } from "./newrows.js";
+import { CURATED } from "./curated.js";
+import { CURATED2 } from "./curated2.js";
+import { CURATED3 } from "./curated3.js";
+import { CURATED4 } from "./curated4.js";
 import { MG_ITEMS } from "./mgitems.js";
 import { FUTURES } from "./futures.js";
+import { FUTURES_MORE } from "./futuresmore.js";
 import { NORMAL_MOVIE, NORMAL_SERIES } from "./normal.js";
 import { WIKI_MICROGENRES } from "./wikimg.js";
 import { PREJUDICE_MG, PREJUDICE_BASE, PREJUDICE_PICKS } from "./prejudice.js";
@@ -617,7 +625,8 @@ export const MICROGENRES = [{"id":"folk-horror","name":"Folk horror: rituals, fi
 // futures: one list (futures.js) with the year each title is set in, split by today's date when asked
 const nf = n => n >= 10000 ? n.toLocaleString("en-US") : String(n);
 for (const [t, sfx] of [["movie", ""], ["series", " (series)"]]) {
-  const all = FUTURES[t].map(([id, name, year, set]) => ({ id, name: `${name} · set in ${nf(set)}`, year, set }));
+  const have = new Set(FUTURES[t].map(x => x[0]));
+  const all = [...FUTURES[t], ...(FUTURES_MORE[t] || []).filter(x => !have.has(x[0]))].map(([id, name, year, set]) => ({ id, name: `${name} · set in ${nf(set)}`, year, set }));
   MICROGENRES.push(
     { id: `all-futures${t === "series" ? "-series" : ""}`, name: `All: every future, in the order of the year it's set in${sfx}`, type: t, family: "futures", future: "all", allof: true, items: all },
     { id: `futures-came${t === "series" ? "-series" : ""}`, name: `Futures that already came: set in a year now past${sfx}`, type: t, family: "futures", future: "past", items: all },
@@ -707,6 +716,18 @@ const TODAY = "today";
     if (items.length >= 2) MICROGENRES.push({ id: `era-bombs-${dec}`, name: `${dec} box-office bombs`, type: "movie", family: "eras", items });
     if (d >= 1940) MICROGENRES.push({ id: `era-tv-${dec}`, name: `Best-known series that began in the ${dec}`, type: "series", family: "eras",
       params: { sort_by: "vote_count.desc", "first_air_date.gte": span.gte, "first_air_date.lte": span.lte } });
+    // what each decade rated highest and lowest (TMDB's users), for films and series alike; enough votes to count
+    const old = d < 1960, tvSpan = { "first_air_date.gte": span.gte, "first_air_date.lte": span.lte, without_genres: "10767,10763" };
+    MICROGENRES.push(
+      { id: `era-loved-${dec}`, name: `Best-rated films of the ${dec}`, type: "movie", family: "eras",
+        params: { sort_by: "vote_average.desc", "vote_count.gte": old ? 150 : 1000, "primary_release_date.gte": span.gte, "primary_release_date.lte": span.lte } },
+      { id: `era-hated-${dec}`, name: `Worst-rated films of the ${dec}`, type: "movie", family: "eras",
+        params: { sort_by: "vote_average.asc", "vote_count.gte": old ? 40 : 300, "primary_release_date.gte": span.gte, "primary_release_date.lte": span.lte } });
+    if (d >= 1950) MICROGENRES.push(
+      { id: `era-tv-loved-${dec}`, name: `Best-rated series that began in the ${dec}`, type: "series", family: "eras",
+        params: { sort_by: "vote_average.desc", "vote_count.gte": old ? 20 : d < 1990 ? 80 : 300, ...tvSpan } },
+      { id: `era-tv-hated-${dec}`, name: `Worst-rated series that began in the ${dec}`, type: "series", family: "eras",
+        params: { sort_by: "vote_average.asc", "vote_count.gte": old ? 8 : d < 1990 ? 25 : 80, ...tvSpan } });
   }
   MICROGENRES.push(
     { id: "all-eras", name: "All: the biggest hits of every decade", type: "movie", family: "eras", allof: true,
@@ -833,29 +854,32 @@ export const mgCurrent = mg => typeof mg === "string" && mg.startsWith(MG_TAG + 
 // ── microgenre families: the first level of the Discover tree ───────────────
 // Discover: 🍄 Horror (catalog) → Microgenre (dropdown) → Genre / Year / Sort by
 export const FAMILIES = [
-  // the basics and the canon
-  ["normal", "Normal genres"], ["collections", "Collections & canons"], ["awards", "Festivals & awards"], ["favourites", "Famous people's favourites"],
-  ["eras", "Eras: hits, loves and hates by decade"],
-  // where it's from, and who it's about
-  ["world", "World cinema"], ["china", "China, Hong Kong & Taiwan"], ["india", "India & South Asia"], ["prejudice", "Racism, prejudice & propaganda"],
-  ["war", "War, history & westerns"], ["places", "Places & settings"],
-  // what kind of thing it is, and who made it
-  ["animation", "Animation"], ["anime", "Anime"], ["docs", "Documentaries"], ["studios", "Studios: whole catalogues"], ["channels", "TV channels & streamers"],
+  // TV channels and the services' own shows (served next to 📺 Streaming services)
+  ["channels", "TV channels & originals"],
+  // the basics and the canon, with the worst next to the eras
+  ["normal", "Normal genres"], ["collections", "Collections & canons"], ["awards", "Festivals & awards"], ["favourites", "Famous people's picks"],
+  ["studios", "Studios"], ["eras", "Eras by decade"], ["razzies", "Razzies & the worst"],
   // genres and moods
-  ["horror", "Horror"], ["scifi", "Sci-fi & fantasy"], ["futures", "Futures: predictions, past and still to come"], ["crime", "Crime, mystery & thrillers"],
-  ["comedy", "Comedy & satire"], ["romance", "Love & relationships"], ["mood", "Moods, endings & form"],
-  ["cult", "Cult, camp & exploitation"], ["extreme", "Transgressive & extreme"], ["razzies", "Razzies & the worst ever made"],
-  // subjects, and everything else
-  ["nature", "Nature & creatures"], ["arts", "Music, art & showbiz"], ["sports", "Sports, games & martial arts"], ["growing", "Family, growing up & getting old"],
+  ["horror", "Horror"], ["scifi", "Sci-fi & fantasy"], ["futures", "Futures"], ["crime", "Crime & thrillers"],
+  ["comedy", "Comedy & satire"], ["romance", "Love & relationships"], ["mood", "Moods, endings & form"], ["vibes", "Vibes & types"],
+  ["cult", "Cult, camp & exploitation"], ["extreme", "Transgressive & extreme"], ["apocalypse", "Apocalypse & collapse"],
+  // where it's from, who it's about, and what kind of thing it is
+  ["world", "World cinema"], ["pubtv", "Public TV worldwide"], ["china", "China, HK & Taiwan"], ["india", "India & South Asia"], ["prejudice", "Racism & propaganda"],
+  ["places", "Places & settings"], ["animation", "Animation"], ["anime", "Anime"], ["docs", "Documentaries"], ["shorts", "Shorts (and longs)"], ["versions", "Versions, cuts & remakes"],
+  // subjects, then everything else
+  ["nature", "Nature & creatures"], ["arts", "Music, art & showbiz"], ["sports", "Sports & games"], ["growing", "Family & growing up"],
   ["life", "Everything else"],
+  // wars last, next to ⚔ Wars from every side
+  ["war", "War, history & westerns"],
 ];
-// the families come in five lumps; each lump is its own add-on in Stremio (so Discover's list keeps them together)
+// the families come in five lumps; each lump is its own add-on in Stremio (so Discover's list keeps them together),
+// in this order: the basics, genres, where it's from, subjects and everything else, then war
 export const FAMILY_GROUPS = [
-  ["The basics & the canon", ["normal", "collections", "awards", "favourites", "eras"]],
-  ["Where it's from & who it's about", ["world", "china", "india", "prejudice", "war", "places"]],
-  ["Animation, documentaries & who made it", ["animation", "anime", "docs", "studios"]],
-  ["Genres & moods", ["horror", "scifi", "futures", "crime", "comedy", "romance", "mood", "cult", "extreme", "razzies"]],
+  ["The basics & the canon", ["normal", "collections", "awards", "favourites", "studios", "eras", "razzies"]],
+  ["Genres & moods", ["horror", "scifi", "futures", "apocalypse", "crime", "comedy", "romance", "mood", "vibes", "cult", "extreme"]],
+  ["Where it's from & what it is", ["world", "pubtv", "china", "india", "prejudice", "places", "animation", "anime", "docs", "shorts", "versions"]],
   ["Subjects & everything else", ["nature", "arts", "sports", "growing", "life"]],
+  ["War, history & westerns", ["war"]],
 ];
 // a row's TMDB genre counts for its family when every title must have it ("27" or "27,53"); in an either-or list
 // ("878|99|18": sci-fi or documentary or drama) only the first one does, so a Moon row isn't filed under Documentaries
@@ -881,10 +905,14 @@ const RULES = {
 // a microgenre can sit in two families (Italian giallo: Horror and World cinema; Horror comedies: Horror and
 // Comedy), so it's found wherever you'd look for it; its first family is where title-page links point
 const FAMILIES_CACHE = new Map();
+// which family a row falls in is worked out in this order (not the display order above), so reordering the list never moves a row
+const RULE_ORDER = ["normal", "collections", "awards", "favourites", "eras", "world", "china", "india", "prejudice", "war", "places",
+  "animation", "anime", "docs", "studios", "channels", "horror", "scifi", "futures", "crime", "comedy", "romance", "mood", "cult", "extreme",
+  "razzies", "nature", "arts", "sports", "growing", "life", "apocalypse", "shorts", "versions", "vibes", "pubtv"];
 export function familiesOf(m) {
   if (FAMILIES_CACHE.has(m.id)) return FAMILIES_CACHE.get(m.id);
   if (m.family) { const f = [m.family, ...(m.also || [])]; FAMILIES_CACHE.set(m.id, f); return f; }
-  const all = FAMILIES.map(([k]) => k).filter(k => RULES[k] && RULES[k](m));
+  const all = RULE_ORDER.filter(k => RULES[k] && RULES[k](m));
   if (EXTREME.has(m.id)) all.unshift("extreme");
   const out = all.length ? [...new Set(all)].slice(0, 2) : ["life"];
   FAMILIES_CACHE.set(m.id, out);
@@ -895,7 +923,7 @@ export function familyOf(m) {
   if (m.family) return m.family;
   if (EXTREME.has(m.id)) return "extreme";
   if (FAMILY_CACHE.has(m.id)) return FAMILY_CACHE.get(m.id);
-  const f = (FAMILIES.find(([k]) => RULES[k] && RULES[k](m)) || ["life"])[0];
+  const f = RULE_ORDER.find(k => RULES[k] && RULES[k](m)) || "life";
   FAMILY_CACHE.set(m.id, f);
   return f;
 }
@@ -945,6 +973,116 @@ for (const m of MICROGENRES.slice(-2)) MG_BY_ID[m.id] = m;
   FAMILIES_CACHE.clear(); FAMILY_CACHE.clear();
 }
 
+// studios in both types: Rankin/Bass's films next to its series, Toei's series next to its films
+for (const [id, type, name, co] of STUDIO_TWINS) {
+  if (MG_BY_ID[id] || MICROGENRES.some(x => x.type === type && (x.params || {}).with_companies === co)) continue;   // a channel's films row has it already
+  const m = { id, name, type, family: "studios", params: { with_companies: co, sort_by: "vote_count.desc", ...(type === "series" ? { without_genres: "10767,10763" } : {}) } };
+  MICROGENRES.push(m); MG_BY_ID[id] = m;
+}
+// new rows (newrows.js) and the Apocalypse family: the old end-of-the-world rows move in with them
+for (const r of [...NEW_ROWS, ...CURATED, ...CURATED2, ...CURATED3, ...CURATED4].filter(r => r.id !== "ar-youtubers-made")) {   // films made by YouTubers come as hits and misses
+  if (MG_BY_ID[r.id]) continue;
+  const m = { ...r, ...(r.items ? { items: r.items.map(x => ({ ...x })) } : {}) };
+  MICROGENRES.push(m); MG_BY_ID[m.id] = m;
+}
+{
+  const MOVE = { pandemics: "Cause: pandemic", "alien-invasion": "Cause: invasion", climate: "Cause: climate", "post-apocalypse": "After the end",
+    disasters: "Cause: nature" };
+  for (const [id, short] of Object.entries(MOVE)) for (const m of [MG_BY_ID[id], MG_BY_ID[id + "-series"]]) if (m) { m.family = "apocalypse"; m.also = []; m.short = short; }
+  if (MG_BY_ID["sh-longs"]) MG_BY_ID["sh-longs"].short = "Longs";
+  // the Adult Swim-style ones are parodies of public access; the real thing has its own row
+  for (const id of ["cu-publicaccess", "cu-publicaccess-films"]) if (MG_BY_ID[id]) { MG_BY_ID[id].short = "Public access: parodies"; MG_BY_ID[id].name = "Public access parodies"; }
+  // snips and snails (boys' gross-out cartoons) next to sugar and spice
+  if (MG_BY_ID["co-gross-series"]) Object.assign(MG_BY_ID["co-gross-series"], { short: "Snips and snails", sortKey: "Snips and snails", name: "Snips and snails: gross-out cartoons" });              // in the Shorts family, that's the joke
+  // shot-for-shot remakes sit next to one continuous take
+  if (MG_BY_ID["ver-shot-for-shot"]) MG_BY_ID["ver-shot-for-shot"].also = ["life"];
+  if (MG_BY_ID["odd-onetake"]) { MG_BY_ID["odd-onetake"].family = "life"; MG_BY_ID["odd-onetake"].also = ["versions"]; }
+  const fc = MG_BY_ID["first-contact"];
+  if (fc && fc.params) fc.params.with_keywords = "211248|160515|229652|162459";
+  // keywords the "Everything else" lists were full of, added to the rows they belong in
+  const addKw = (id, kws) => { const m = MG_BY_ID[id]; if (m && m.params && m.params.with_keywords) m.params.with_keywords = [...new Set([...m.params.with_keywords.split("|"), ...kws.split("|")])].join("|"); };
+  // rows the size check caught pulling in far too much
+  const set = (id, p, drop = []) => { const m = MG_BY_ID[id]; if (m && m.params) { Object.assign(m.params, p); for (const k of drop) delete m.params[k]; } };
+  set("odd-psa", { with_keywords: "380668|271463|319579" });                                   // not every short film and all propaganda
+  set("in-ray-ghatak", { with_original_language: "bn", "primary_release_date.lte": "1995-12-31", sort_by: "vote_count.desc" });
+  set("mus-euro", { without_genres: "99" }); set("mus-roadshow", { without_genres: "99", "vote_count.gte": 30 });
+  set("ani-sitcoms", { with_genres: "16,35" });                                              // animated AND comedy, not either
+  set("odd-silent-now", { "primary_release_date.gte": "1935-01-01" });
+  // titles the keyword rows missed (Cousteau sat in Everything else)
+  const addItems = (id, its) => { const m = MG_BY_ID[id]; if (!m) return; const have = new Set((m.items || []).map(x => x.id)); m.items = [...(m.items || []), ...its.filter(x => !have.has(x.id))]; };
+  addItems("nature-docs-series", [{ id: "tt0192937", name: "The Undersea World of Jacques Cousteau", year: "1968" }, { id: "tt0076996", name: "The Jacques Cousteau Odyssey", year: "1979" }]);
+  addItems("nature-docs", [{ id: "tt0049518", name: "The Silent World", year: "1956" }, { id: "tt0058364", name: "World Without Sun", year: "1964" }, { id: "tt0158350", name: "Voyage to the Edge of the World", year: "1976" }]);
+  addKw("experimental", "285787"); addKw("real-time", "173361"); addKw("movies-about-movies", "9732|6026|174109"); addKw("movies-about-movies-series", "9732|6026");
+  addKw("nature-docs", "221355|324404|305903|252105"); addKw("nature-docs-series", "221355|324404|305903|252105|284176");
+}
+// the biggest national rows (thousands of titles each) also come split by era
+{
+  const ERAS = [["before 1960", null, "1959-12-31"], ["1960s–70s", "1960-01-01", "1979-12-31"], ["1980s–90s", "1980-01-01", "1999-12-31"], ["2000s on", "2000-01-01", null]];
+  for (const id of ["nc-france", "nc-italy", "nc-spain", "nc-mexico", "nc-japan", "nc-korea", "nc-russia", "nc-nordic"]) {
+    const b = MG_BY_ID[id]; if (!b || !b.params || b.type !== "movie") continue;
+    const label = b.name.split(":")[0].trim().replace(/\s+(cinema|films)$/i, "").replace(/ and Soviet$/, "");
+    ERAS.forEach(([era, gte, lte], i) => {
+      const m = { id: `${id}-era${i + 1}`, name: `${label}: ${era}`, type: "movie", family: "world",
+        params: { ...b.params, sort_by: "vote_count.desc", ...(gte ? { "primary_release_date.gte": gte } : {}), ...(lte ? { "primary_release_date.lte": lte } : {}) } };
+      if (!MG_BY_ID[m.id]) { MICROGENRES.push(m); MG_BY_ID[m.id] = m; }
+    });
+  }
+}
+// European animation, split by country
+{
+  const b = MG_BY_ID["ani-euro"];
+  if (b && b.params) for (const [k, label, cc, short] of [["fr", "French & Belgian", "FR|BE"], ["uk", "British & Irish", "GB|IE"], ["es", "Spanish & Portuguese", "ES|PT", "Iberian"],
+      ["it", "Italian", "IT"], ["de", "German, Austrian & Swiss", "DE|AT|CH", "German-speaking"], ["nordic", "Nordic", "DK|SE|NO|FI|IS"], ["nl", "Dutch", "NL"]]) {
+    const m = { id: `ani-euro-${k}`, name: `European: ${label}`, short: `Europe: ${short || label}`, type: "movie", family: "animation", params: { ...b.params, with_origin_country: cc, sort_by: "vote_count.desc" } };
+    if (!MG_BY_ID[m.id]) { MICROGENRES.push(m); MG_BY_ID[m.id] = m; }
+  }
+}
+// names that promised more than the row holds, and titles a list picked up by a title clash
+{
+  const RENAME = { "halloween-night": "Halloween", "halloween-night-series": "Halloween", "abandoned-unfinished": "Unfinished, shelved, finished later" };
+  const DROP = { "abandoned-unfinished": ["tt0291221", "tt0072389", "tt0399471", "tt0150500", "tt1468321", "tt3124454", "tt0404978", "tt4625196",
+    "tt1982137", "tt0069495", "tt0071269", "tt2103264", "tt13391710", "tt0367639", "tt4320560", "tt33335215", "tt31418394"] };
+  for (const [id, n] of Object.entries(RENAME)) if (MG_BY_ID[id]) MG_BY_ID[id].name = n;
+  for (const [id, ids] of Object.entries(DROP)) { const m = MG_BY_ID[id]; if (m && m.items) m.items = m.items.filter(x => !ids.includes(x.id)); }
+}
+// superheroes and the other comics sit side by side (superheroes first), and the other comics have no superheroes
+{
+  const heroes = new Set([...(MG_BY_ID["tv-sf-heroes"] || {}).items || [], ...(MG_BY_ID["ani-superhero"] || {}).items || []].map(x => x.id)
+    .concat(["tt6741278", "tt1312171", "tt1878805", "tt6604188", "tt7134908"]));     // Invincible, The Umbrella Academy, Doom Patrol, Watchmen (2019), The Boys
+  for (const id of ["comic-adaptations-indie", "comic-adaptations-indie-series"]) {
+    const m = MG_BY_ID[id]; if (!m) continue;
+    m.params = { ...m.params, without_keywords: [...new Set([...String(m.params.without_keywords || "").split(",").filter(Boolean), "9715", "155030"])].join(",") };
+    if (m.items) m.items = m.items.filter(x => !heroes.has(x.id));
+  }
+  const sh = MG_BY_ID["normal-superhero-films"];
+  if (sh) { sh.family = "scifi"; sh.also = ["normal"]; }
+  for (const id of ["normal-superhero-films", "tv-sf-heroes"]) if (MG_BY_ID[id]) MG_BY_ID[id].sortKey = "Comics: !";   // just above "Comics: no superheroes"
+}
+// one row per idea: where Normal genres, Places or Channels repeated a family's row, that row stays and also shows there
+// (an old id still finds the row it became, for Home rows picked before)
+{
+  const SAME = [["normal-horror-comedy", "horror-comedy"], ["normal-neo-noir", "neo-noir"], ["normal-road-movies", "road-movies"],
+    ["normal-satire", "satire"], ["normal-stop-motion", "stop-motion"], ["normal-music-documentary", "music-docs"], ["pl-submarines", "submarines"],
+    ["normal-kidnapping", "kidnapping"], ["normal-conspiracy", "conspiracy"], ["normal-swashbucklers", "pirates-golden"], ["normal-silent-films", "silent-era"],
+    ["pl-boarding-schools", "boarding-school"], ["normal-remakes", "remakes"], ["normal-crime-documentary", "crime-docs"], ["normal-tv-spy-series", "tv-spy"],
+    ["normal-tv-period-drama", "tv-period"], ["normal-tv-sketch-comedy", "tv-sketch"], ["normal-tv-miniseries", "tv-miniseries"],
+    ["normal-sci-fi-horror", "sci-fi-horror"], ["normal-concert-films", "concert-films"], ["normal-tv-mockumentary", "mockumentary-series"],
+    ["pl-submarines-series", "submarines-series"], ["pl-boarding-schools-series", "boarding-school-series"], ["normal-tv-crime-documentary", "crime-docs-series"],
+    ["tv-sp-anime", "an-sports"], ["ch-film-bbc-film", "st-bbc-film"], ["pl-courtrooms", "normal-courtroom"], ["pl-courtrooms-series", "normal-tv-legal"],
+    ["pl-hospitals-series", "normal-tv-medical"], ["ch-film-lifetime--tv-movies", "normal-made-for-tv"], ["normal-tv-western", "tv-war-westerns"], ["normal-tv-superheroes", "tv-sf-heroes"], ["li-news-series", "normal-tv-news"],
+    ["li-talk-series", "normal-tv-talk-shows"], ["st-tv-lucasfilm-films", "st-lucasfilm"], ["st-lucasfilm-series", "st-tv-lucasfilm"], ["mo-experimental", "experimental"], ["odd-realtime", "real-time"], ["cu-badseries", "tv-raz-flops"]];
+  for (const [drop, keep] of SAME) {
+    const d = MG_BY_ID[drop], k = MG_BY_ID[keep];
+    if (!d || !k || d === k || d.type !== k.type) continue;
+    const fs = familiesOf(k), extra = familiesOf(d);
+    k.family = fs[0]; k.also = [...new Set([...fs.slice(1), ...(k.also || []), ...extra])].filter(f => f !== k.family);
+    if (d.items && k.items) { const have = new Set(k.items.map(x => x.id)); k.items = [...k.items, ...d.items.filter(x => !have.has(x.id))]; }
+    k.aliases = [...(k.aliases || []), drop, ...(d.aliases || [])];          // its whole catalogue (cat_items) still counts
+    MICROGENRES.splice(MICROGENRES.indexOf(d), 1); MG_BY_ID[drop] = k;
+  }
+  FAMILIES_CACHE.clear(); FAMILY_CACHE.clear();
+}
+
 // "All of …": the first choice in every family, the whole family to scroll through (its catch-all's base query
 // without the exclusions), so you can browse a family without picking a niche first
 for (const t of ["movie", "series"]) {
@@ -973,7 +1111,7 @@ const FAM_SHORT = { normal: "Normal genres", collections: "Collections", awards:
   places: "Places", animation: "Animation", anime: "Anime", docs: "Documentaries", studios: "Studios", channels: "Channels",
   horror: "Horror", scifi: "Sci-fi & fantasy", futures: "Futures", crime: "Crime & thrillers", comedy: "Comedy", romance: "Love",
   mood: "Moods & form", cult: "Cult & camp", extreme: "Extreme", razzies: "The worst", nature: "Nature", arts: "Music & art",
-  sports: "Sports & games", growing: "Growing up & old", life: "Everything else" };
+  sports: "Sports & games", growing: "Growing up & old", life: "Everything else", apocalypse: "Apocalypse", shorts: "Shorts", versions: "Versions", vibes: "Vibes", pubtv: "Public TV" };
 const SHORTER = {
   "ai-minds": "AI and thinking machines", "comic-adaptations-indie": "Comic adaptations, not superheroes",
   "canuxploitation": "Canuxploitation: Canadian tax-shelter films", "war-israel": "Israel, Palestine and the Arab–Israeli wars",
@@ -1033,4 +1171,64 @@ for (const m of MICROGENRES) { familiesOf(m); familyOf(m); }
       seen.set(m.name, m);
     }
   }
+}
+// wars that ⚔ Wars from every side already has as their own row: those rows leave the War family's dropdown (they'd
+// be the same list twice), their hand-picked films lead that war's "All sides", and their tags on title pages point there
+{
+  const SIDE_OF = { ww1: "ww1", "spanish-civil-war": "spanish", "war-sinojapanese": "sinojapanese", ww2: "ww2", "war-korea": "korea",
+    "algerian-war": "algeria", vietnam: "vietnam", "war-coldwar": "coldwar", "war-troubles": "troubles", "war-israel": "israel",
+    "war-lebanon": "lebanon", "war-indopak": "indopak", "war-iraniraq": "iraniraq", "war-sovafghan": "sovafghan", "war-falklands": "falklands",
+    "war-yugoslav": "yugoslav", "war-rwanda": "rwanda", "gulf-iraq-afghanistan": "gulfiraq", "war-syria": "syria", "war-karabakh": "karabakh",
+    "war-ukraine": "ukraine" };
+  for (const m of MICROGENRES) { const w = SIDE_OF[m.id.replace(/-series$/, "")]; if (w) m.side = w; }
+}
+// ── TV names: a dropdown entry fits in 25 characters, and doesn't repeat what its family already says ──
+// m.long keeps the 44-character name (install page, tags, Home rows); m.name is what the family dropdown shows,
+// unique inside each family it sits in; m.tag is the short name when no other row of that type has it, else the long one.
+export const TV_MAX = 25;
+{
+  const base = id => id.replace(/-series$/, "");
+  const cut = n => n.slice(0, TV_MAX - 1).replace(/[\s,;:–&-]+\S*$/, "").replace(/[\s,;:–&-]+$/, "") + "…";
+  for (const m of MICROGENRES) {
+    const fam = familyOf(m);
+    m.long = m.name;
+    let n = m.name;
+    if (m.allof) n = "All";
+    else if (m.catchall || /^Everything else\b/.test(n)) n = "Everything else";
+    else if (m.short) n = m.short;
+    else if (SHORT25[m.id] || SHORT25[base(m.id)]) n = SHORT25[m.id] || SHORT25[base(m.id)];
+    else {
+      n = n.replace(/^(\d{4}s) box-office hits$/, "$1 hits").replace(/^(\d{4}s) box-office bombs$/, "$1 bombs")
+           .replace(/^Best-known series that began in the (\d{4}s)$/, "$1 best known").replace(/^Best-known series of the (\d{4}s)$/, "$1 best known")
+           .replace(/^Best-rated (?:films|series)(?: of the| that began in the) (\d{4}s)$/, "$1 best rated").replace(/^Worst-rated (?:films|series)(?: of the| that began in the) (\d{4}s)$/, "$1 worst rated");
+      if (fam === "docs" && familiesOf(m).every(f => f === "docs")) n = n.replace(/\s+(documentar(y|ies)|docs|docuseries)$/i, "").replace(/^(documentaries|docs)\s*(about|on)?\s*:?\s*/i, "") || n;
+      if (fam === "anime") { const k = n.replace(/\s*\banime\b\s*/i, " ").trim(); if (k.length >= 4 && !/^(series|films?|movies)$/i.test(k)) n = k; }
+      if (fam === "world") { const k = n.replace(/\s+(cinema|films)$/i, ""); if (k.length >= 4 && !/^(world|series)$/i.test(k)) n = k; }
+      if (n.length > TV_MAX && n.includes(":")) { const h = n.split(":")[0].trim(); if (h.length >= 4) n = h; }
+      if (n.length > TV_MAX) n = n.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+      if (n.length > TV_MAX) n = cut(n);
+    }
+    m.name = n.charAt(0).toUpperCase() + n.slice(1);
+  }
+  // unique inside every family a row sits in (a family's dropdown finds its choice by name)
+  for (const t of ["movie", "series"]) {
+    const seen = new Map();                          // family|name → row
+    for (const m of MICROGENRES.filter(x => x.type === t)) {
+      const fams = familiesOf(m), taken = n => fams.some(f => seen.has(f + "|" + n) && seen.get(f + "|" + n) !== m);
+      if (taken(m.name)) { const l = m.long.replace(/:.*$/, "").trim(); m.name = l.length <= TV_MAX && !taken(l) ? l : m.name; }
+      let k = 2; const n0 = m.name.length > TV_MAX - 2 ? cut(m.name.slice(0, TV_MAX - 2)) : m.name;
+      while (taken(m.name)) m.name = n0 + " " + k++;
+      for (const f of fams) seen.set(f + "|" + m.name, m);
+    }
+    const count = new Map();
+    for (const m of MICROGENRES.filter(x => x.type === t)) count.set(m.name, (count.get(m.name) || 0) + 1);
+    for (const m of MICROGENRES.filter(x => x.type === t)) m.tag = count.get(m.name) === 1 ? m.name : m.long;
+  }
+}
+/** The row a dropdown choice means: by its TV name inside the family, else its long name, else a TV name only it has. */
+export function mgByName(name, type, fam) {
+  if (!name) return null;
+  const pool = MICROGENRES.filter(x => !type || x.type === type);
+  return (fam && pool.find(x => x.name === name && familiesOf(x).includes(fam)))
+    || pool.find(x => x.long === name) || pool.find(x => x.tag === name) || pool.find(x => x.name === name) || null;
 }

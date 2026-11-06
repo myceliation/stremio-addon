@@ -216,7 +216,7 @@ export const BUILDERS = {
   },
 
   microgenre(type, extra, ctx, arg) {
-    const m = MG_BY_ID[arg] || Object.values(MG_BY_ID).find(x => x.name === extra.genre && x.type === type);
+    const m = MG_BY_ID[arg] || Object.values(MG_BY_ID).find(x => (x.tag === extra.genre || x.long === extra.genre) && x.type === type);
     if (!m) return null;
     if (m.future) return { static: futureItems(m) };                 // futures: split by today's date
     if (m.items && !m.params) return { static: m.items };            // hand-picked only
